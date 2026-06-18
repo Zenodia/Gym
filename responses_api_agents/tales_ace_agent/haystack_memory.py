@@ -56,9 +56,9 @@ from haystack_integrations.components.embedders.nvidia import (
     NvidiaTextEmbedder,
 )
 
-load_dotenv("/home/ubuntu/dspy/.env")
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-NVIDIA_API_KEY = os.environ["NVIDIA_API_KEY"]
+NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
 BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 # Same roles as the baseline run, so memory is the only changed variable.
@@ -364,9 +364,9 @@ class StructuredMemoryAgent(dspy.Module):
         super().__init__()
         self.max_iters = max_iters
         self.update = dspy.Predict(MemoryUpdate)
-        self.playbook = ""       # ace_alfworld sets this to the evolving strategy text
-        self.prefill_facts = []  # ace: facts discovered in a previous run (same goal+idx)
-        self.prefill_dead_ends = []  # ace: confirmed dead-ends from a previous run
+        self.playbook = ""       # rung3 (ACE) sets this to the evolving strategy text
+        self.prefill_facts = []  # rung3: facts discovered in a previous run (same goal+idx)
+        self.prefill_dead_ends = []  # rung3: confirmed dead-ends from a previous run
 
     def forward(self, idx):
         store = InMemoryDocumentStore()
@@ -494,15 +494,15 @@ def main():
         avg_ret = sum(rets) / len(rets)
         succ_pct = 100.0 * sum(succ) / len(succ)
         avg_steps = (sum(steps_solved) / len(steps_solved)) if steps_solved else float("nan")
-        with open("results_haystack.json", "w") as f:
-            json.dump({"label": "haystack-memory", "gamma": GAMMA,
+        with open("results_rung2.json", "w") as f:
+            json.dump({"label": "rung2", "gamma": GAMMA,
                        "summary": {"return": avg_ret, "success": succ_pct,
                                    "avg_steps": avg_steps}, "games": records}, f, indent=2)
-        print(f"\n{'=' * 56}\n  Haystack structured memory vs baseline\n{'=' * 56}")
+        print(f"\n{'=' * 56}\n  RUNG2 (Haystack structured memory) vs baseline\n{'=' * 56}")
         print(f"  {'':<10}{'return':>10}{'success%':>11}{'avg_steps':>11}")
         print(f"  {'baseline':<10}{0.485:>10.3f}{60.0:>10.1f}%{12.2:>11.1f}   (from log)")
-        print(f"  {'haystack':<10}{avg_ret:>10.3f}{succ_pct:>10.1f}%{avg_steps:>11.1f}")
-        print(f"{'=' * 56}  ({time.time() - t0:.0f}s)  -> results_haystack.json", flush=True)
+        print(f"  {'rung2':<10}{avg_ret:>10.3f}{succ_pct:>10.1f}%{avg_steps:>11.1f}")
+        print(f"{'=' * 56}  ({time.time() - t0:.0f}s)  -> results_rung2.json", flush=True)
         return
 
     # --- smoke: single task (default devset[2], the baseline examine-loop fail)

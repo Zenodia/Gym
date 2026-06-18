@@ -311,7 +311,10 @@ Per-episode, per-step cycle:
 ```
 responses_api_agents/tales_ace_agent/
 ├── __init__.py
-├── app.py                             # ~460 lines — full agent implementation
+├── app.py                             # ~460 lines — Gym agent (self-contained port)
+├── haystack_memory.py                 # standalone: rung 2 — DSPy + Haystack memory
+├── ace_alfworld.py                    # standalone: rung 3 — ACE playbook optimizer
+├── ace_relay_trace.py                 # standalone: rung 3 + NeMo Relay tracing
 ├── ace_haystack_integration_steps.md  # this file
 ├── launch.sh                          # one-liner: kill + start + run
 ├── configs/
@@ -327,6 +330,12 @@ responses_api_agents/tales_ace_agent/
 responses_api_agents/
 └── nemo_relay-0.4.0-cp311-abi3-linux_x86_64.whl   # stable wheel copy
 ```
+
+The three standalone scripts (`haystack_memory.py`, `ace_alfworld.py`, `ace_relay_trace.py`) are
+the original development rungs ported to this directory. They import each other locally
+(`ace_alfworld` → `haystack_memory`; `ace_relay_trace` → both) and share the `.env` file in
+this directory. `app.py` does **not** import from them — it is a self-contained Gym integration
+that avoids the module-level side effects present in the standalone scripts.
 
 ---
 

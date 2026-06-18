@@ -1,20 +1,21 @@
 """
-ACE (Agentic Context Engineering) on top of Haystack structured memory.
+RUNG 3 of the ALFWorld showcase: ACE (Agentic Context Engineering) on top of
+rung 2's structured Haystack memory.
 
-  baseline   = naive memory
-  haystack   = Haystack structured memory  (haystack_memory.py)
-  ace        = + an iterative improvement algorithm  <-- THIS FILE
+  rung 1 = baseline (naive memory)
+  rung 2 = Haystack structured memory  (rung2_haystack_memory.py)
+  rung 3 = + an iterative improvement algorithm  <-- THIS FILE
 
-Why ACE (arXiv:2510.04618) and not GEPA: the haystack-memory diagnosis showed
-the fault is the *decision policy*, and GEPA could only mutate a summarizer it
-doesn't control (credit-assignment mismatch). ACE instead evolves the very
-context the reasoner reads -- a persistent, cross-episode STRATEGY PLAYBOOK --
-so the thing being optimized IS the thing feeding the decision. It also fixes
-"context collapse" via structured bullet items + incremental delta updates (not
-monolithic rewrites), which is exactly the failure we saw in old free-text memory.
+Why ACE (arXiv:2510.04618) and not GEPA: the rung-2 diagnosis showed the fault
+is the *decision policy*, and GEPA could only mutate a summarizer it doesn't
+control (credit-assignment mismatch). ACE instead evolves the very context the
+reasoner reads -- a persistent, cross-episode STRATEGY PLAYBOOK -- so the thing
+being optimized IS the thing feeding the decision. It also fixes "context
+collapse" via structured bullet items + incremental delta updates (not monolithic
+rewrites), which is exactly the failure we saw in the old free-text memory.
 
 ACE loop (offline, no labels -- learns from execution outcome):
-  Generator : StructuredMemoryAgent runs an episode, reading the current
+  Generator : rung-2 StructuredMemoryAgent runs an episode, reading the current
               playbook as extra context (agent.playbook).
   Reflector : an LM reads (task, outcome, trajectory, playbook) and says which
               existing bullets helped / hurt, and proposes new general strategies.
@@ -24,8 +25,8 @@ ACE loop (offline, no labels -- learns from execution outcome):
 
 The playbook persists ACROSS episodes; success%/steps should improve as it grows.
 
-    .venv/bin/python ace_alfworld.py --smoke   # train 2, eval 1 (fast proof)
-    .venv/bin/python ace_alfworld.py --full    # train N, eval N_TEST vs base
+    .venv/bin/python rung3_ace_alfworld.py --smoke   # train 2, eval 1 (fast proof)
+    .venv/bin/python rung3_ace_alfworld.py --full    # train N, eval N_TEST vs base
 """
 
 import json
@@ -36,7 +37,7 @@ import time
 
 import dspy
 
-# Reuse haystack_memory's whole agent + memory stack; only the cross-episode layer is new.
+# Reuse rung-2's whole agent + memory stack; only the cross-episode layer is new.
 import haystack_memory as r2
 from haystack_memory import (
     Fore, Style, GAMMA, NVIDIA_API_KEY, BASE_URL, SUMMARIZER_MODEL,
@@ -304,17 +305,17 @@ def main():
     avg_ret = sum(rets) / len(rets)
     succ_pct = 100.0 * sum(succ) / len(succ)
     avg_steps = (sum(steps_solved) / len(steps_solved)) if steps_solved else float("nan")
-    with open("results_ace.json", "w") as f:
-        json.dump({"label": "ace-alfworld", "gamma": GAMMA,
+    with open("results_rung3.json", "w") as f:
+        json.dump({"label": "rung3-ace", "gamma": GAMMA,
                    "playbook": pb.render_meta(),
                    "summary": {"return": avg_ret, "success": succ_pct, "avg_steps": avg_steps},
                    "games": records}, f, indent=2)
 
-    print(f"\n{'=' * 60}\n  ACE  (playbook = {len(pb.items)} bullets)\n{'=' * 60}")
+    print(f"\n{'=' * 60}\n  RUNG3 ACE  (playbook = {len(pb.items)} bullets)\n{'=' * 60}")
     print(f"  {'':<10}{'return':>10}{'success%':>11}{'avg_steps':>11}")
     print(f"  {'baseline':<10}{0.485:>10.3f}{60.0:>10.1f}%{12.2:>11.1f}   (from log)")
-    print(f"  {'ace':<10}{avg_ret:>10.3f}{succ_pct:>10.1f}%{avg_steps:>11.1f}")
-    print(f"{'=' * 60}  ({time.time() - t0:.0f}s)  -> results_ace.json", flush=True)
+    print(f"  {'rung3':<10}{avg_ret:>10.3f}{succ_pct:>10.1f}%{avg_steps:>11.1f}")
+    print(f"{'=' * 60}  ({time.time() - t0:.0f}s)  -> results_rung3.json", flush=True)
 
 
 if __name__ == "__main__":
