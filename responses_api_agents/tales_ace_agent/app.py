@@ -44,7 +44,8 @@ from typing import Any
 
 import dspy
 import nemo_relay
-from colorama import Fore, Style, init as colorama_init
+from colorama import Fore, Style
+from colorama import init as colorama_init
 from dotenv import load_dotenv
 from fastapi import Body, HTTPException, Request, Response
 from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
@@ -63,6 +64,7 @@ from nemo_gym.config_types import AggregateMetrics, AggregateMetricsRequest, Res
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.server_utils import get_response_json, raise_for_status
 from resources_servers.gymnasium import EnvResetResponse, EnvStepResponse
+
 
 colorama_init(autoreset=True)
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -120,7 +122,9 @@ def _reasoner() -> NvidiaChatGenerator:
 
 def _doc_embedder() -> NvidiaDocumentEmbedder:
     if "doc" not in _HAYSTACK:
-        e = NvidiaDocumentEmbedder(model=_EMBED_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=_NVIDIA_API_BASE)
+        e = NvidiaDocumentEmbedder(
+            model=_EMBED_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=_NVIDIA_API_BASE
+        )
         e.warm_up()
         _HAYSTACK["doc"] = e
     return _HAYSTACK["doc"]
@@ -128,7 +132,9 @@ def _doc_embedder() -> NvidiaDocumentEmbedder:
 
 def _text_embedder() -> NvidiaTextEmbedder:
     if "txt" not in _HAYSTACK:
-        e = NvidiaTextEmbedder(model=_EMBED_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=_NVIDIA_API_BASE)
+        e = NvidiaTextEmbedder(
+            model=_EMBED_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=_NVIDIA_API_BASE
+        )
         e.warm_up()
         _HAYSTACK["txt"] = e
     return _HAYSTACK["txt"]
@@ -142,29 +148,29 @@ _INFO_ACTIONS = ("examine", "look", "inventory")
 _TOP_K_MEMORY = 10
 
 _UNLIKELY_LOCATIONS: dict[str, list[str]] = {
-    "cd":            ["vase", "plant", "bathtub", "toilet", "sink", "fridge", "microwave", "garbagecan", "pot", "pan"],
-    "book":          ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
-    "laptop":        ["vase", "plant", "bathtub", "toilet", "sink", "fridge", "microwave", "garbagecan"],
-    "cellphone":     ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
-    "phone":         ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
-    "pen":           ["bathtub", "toilet", "fridge", "microwave"],
-    "pencil":        ["bathtub", "toilet", "fridge", "microwave"],
-    "keychain":      ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
-    "creditcard":    ["bathtub", "toilet", "fridge", "microwave", "vase"],
+    "cd": ["vase", "plant", "bathtub", "toilet", "sink", "fridge", "microwave", "garbagecan", "pot", "pan"],
+    "book": ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
+    "laptop": ["vase", "plant", "bathtub", "toilet", "sink", "fridge", "microwave", "garbagecan"],
+    "cellphone": ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
+    "phone": ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
+    "pen": ["bathtub", "toilet", "fridge", "microwave"],
+    "pencil": ["bathtub", "toilet", "fridge", "microwave"],
+    "keychain": ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
+    "creditcard": ["bathtub", "toilet", "fridge", "microwave", "vase"],
     "remotecontrol": ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
-    "newspaper":     ["bathtub", "toilet", "fridge", "sink", "vase", "plant", "microwave"],
-    "magazine":      ["bathtub", "toilet", "fridge", "sink", "vase", "microwave"],
-    "watch":         ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
-    "candle":        ["bathtub", "toilet", "fridge", "vase", "plant"],
-    "statue":        ["bathtub", "toilet", "fridge", "microwave"],
-    "spraybottle":   ["bathtub", "toilet", "fridge", "vase", "plant"],
-    "soapbottle":    ["bathtub", "toilet", "fridge", "vase", "plant"],
-    "knife":         ["vase", "plant"],
-    "fork":          ["vase", "plant"],
-    "spoon":         ["vase", "plant"],
-    "toiletpaper":   ["fridge", "microwave", "vase", "plant"],
-    "handtowel":     ["fridge", "microwave", "vase"],
-    "cloth":         ["fridge", "microwave"],
+    "newspaper": ["bathtub", "toilet", "fridge", "sink", "vase", "plant", "microwave"],
+    "magazine": ["bathtub", "toilet", "fridge", "sink", "vase", "microwave"],
+    "watch": ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
+    "candle": ["bathtub", "toilet", "fridge", "vase", "plant"],
+    "statue": ["bathtub", "toilet", "fridge", "microwave"],
+    "spraybottle": ["bathtub", "toilet", "fridge", "vase", "plant"],
+    "soapbottle": ["bathtub", "toilet", "fridge", "vase", "plant"],
+    "knife": ["vase", "plant"],
+    "fork": ["vase", "plant"],
+    "spoon": ["vase", "plant"],
+    "toiletpaper": ["fridge", "microwave", "vase", "plant"],
+    "handtowel": ["fridge", "microwave", "vase"],
+    "cloth": ["fridge", "microwave"],
 }
 
 
@@ -172,7 +178,9 @@ def _common_sense_hint(goal: str) -> str:
     g = goal.lower()
     for obj, unlikely in _UNLIKELY_LOCATIONS.items():
         if obj in g:
-            return f"Common sense: {obj}s are NEVER found in {', '.join(unlikely)}. Do NOT navigate to those locations."
+            return (
+                f"Common sense: {obj}s are NEVER found in {', '.join(unlikely)}. Do NOT navigate to those locations."
+            )
     return ""
 
 
@@ -202,7 +210,13 @@ def make_action_tool(admissible: list[str]) -> Tool:
         description="Choose the single best next action toward completing the task.",
         parameters={
             "type": "object",
-            "properties": {"action": {"type": "string", "enum": list(admissible), "description": "next action, copied verbatim from the list"}},
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": list(admissible),
+                    "description": "next action, copied verbatim from the list",
+                }
+            },
             "required": ["action"],
         },
         function=lambda action: action,
@@ -221,15 +235,18 @@ class MemoryUpdate(dspy.Signature):
     - If the observation does not name an object, do NOT claim its location.
     - When uncertain, output 'none' for new_fact.
     - progress states ONLY confirmed counts and what is currently held/placed."""
+
     task = dspy.InputField()
     last_action = dspy.InputField()
     observation = dspy.InputField()
     current_progress = dspy.InputField()
     new_fact: str = dspy.OutputField(
         desc="ONE world fact stated verbatim from THIS observation "
-             "(e.g. 'drawer 3: empty'); every object MUST appear in the observation, else 'none'")
+        "(e.g. 'drawer 3: empty'); every object MUST appear in the observation, else 'none'"
+    )
     dead_end: str = dspy.OutputField(
-        desc="copy exact last_action if it made NO progress and must not be repeated; else exactly 'none'")
+        desc="copy exact last_action if it made NO progress and must not be repeated; else exactly 'none'"
+    )
     progress: str = dspy.OutputField(desc="confirmed counts + what's held/placed only; NO location claims")
     plan: str = dspy.OutputField(desc="next concrete subgoals, ordered, terse")
 
@@ -288,7 +305,9 @@ class Playbook:
                 it[key] += 1
 
     def prune(self) -> None:
-        self.items = [it for it in self.items if not (it["harmful"] - it["helpful"] >= _PRUNE_NET and it["helpful"] == 0)]
+        self.items = [
+            it for it in self.items if not (it["harmful"] - it["helpful"] >= _PRUNE_NET and it["helpful"] == 0)
+        ]
 
     def render(self, k: int = _PLAYBOOK_CAP) -> str:
         ranked = sorted(self.items, key=lambda it: it["helpful"] - it["harmful"], reverse=True)[:k]
@@ -296,7 +315,9 @@ class Playbook:
 
     def render_meta(self, k: int = _PLAYBOOK_CAP) -> str:
         ranked = sorted(self.items, key=lambda it: it["helpful"] - it["harmful"], reverse=True)[:k]
-        return "\n".join(f"[{it['id']}] (+{it['helpful']}/-{it['harmful']}) {it['text']}" for it in ranked) or "(empty)"
+        return (
+            "\n".join(f"[{it['id']}] (+{it['helpful']}/-{it['harmful']}) {it['text']}" for it in ranked) or "(empty)"
+        )
 
 
 class Reflect(dspy.Signature):
@@ -308,6 +329,7 @@ class Reflect(dspy.Signature):
 
     new_strategies OUTPUT FORMAT (strict): ONLY strategy sentences, ONE imperative sentence per line,
     at most 3 lines. NO headers, NO 'Reasoning:', NO numbering, NO markdown/asterisks."""
+
     task = dspy.InputField()
     outcome = dspy.InputField(desc="e.g. 'SOLVED in 9 steps' or 'FAILED at 50 steps'")
     trajectory = dspy.InputField(desc="actions and observations from the episode")
@@ -315,7 +337,8 @@ class Reflect(dspy.Signature):
     helpful_ids: str = dspy.OutputField(desc="comma-separated ids of strategies that helped THIS episode, or 'none'")
     harmful_ids: str = dspy.OutputField(desc="comma-separated ids that misled / wasted steps, or 'none'")
     new_strategies: str = dspy.OutputField(
-        desc="at most 3 NEW general strategies, ONE imperative sentence per line; empty if none")
+        desc="at most 3 NEW general strategies, ONE imperative sentence per line; empty if none"
+    )
 
 
 _META_RE = re.compile(
@@ -428,11 +451,16 @@ def _reason_traced(
     for attempt in range(_RPM_MAX_RETRIES):
         llm_req = nemo_relay.LLMRequest(
             {},
-            {"messages": [{"role": "system", "content": REASON_SYS}, {"role": "user", "content": user_msg}], "model": _REASONER_MODEL},
+            {
+                "messages": [{"role": "system", "content": REASON_SYS}, {"role": "user", "content": user_msg}],
+                "model": _REASONER_MODEL,
+            },
         )
         lh = nemo_relay.llm.call(
-            "reasoner", llm_req,
-            handle=ep_handle, model_name=_REASONER_MODEL,
+            "reasoner",
+            llm_req,
+            handle=ep_handle,
+            model_name=_REASONER_MODEL,
             data={"step": step_num, "attempt": attempt},
         )
         _throttle()
@@ -466,16 +494,29 @@ def _reason_traced(
             last_exc = e
             nemo_relay.llm.call_end(lh, {"error": str(e)[:300]})
             if _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
-                nemo_relay.scope.event("llm_rate_limit_hit", handle=ep_handle, data={
-                    "provider": "reasoner", "model": _REASONER_MODEL,
-                    "step": step_num, "attempt": attempt + 1,
-                    "wait_seconds": wait, "error": str(e)[:300],
-                })
-                print(f"  {Fore.YELLOW}[relay] 429/RPM on reasoner step {step_num}, waiting {wait:.0f}s{Style.RESET_ALL}", flush=True)
+                nemo_relay.scope.event(
+                    "llm_rate_limit_hit",
+                    handle=ep_handle,
+                    data={
+                        "provider": "reasoner",
+                        "model": _REASONER_MODEL,
+                        "step": step_num,
+                        "attempt": attempt + 1,
+                        "wait_seconds": wait,
+                        "error": str(e)[:300],
+                    },
+                )
+                print(
+                    f"  {Fore.YELLOW}[relay] 429/RPM on reasoner step {step_num}, waiting {wait:.0f}s{Style.RESET_ALL}",
+                    flush=True,
+                )
                 time.sleep(wait)
                 wait = min(wait * 2, _RPM_WAIT_CAP)
             else:
-                print(f"  {Fore.RED}[reason error (attempt {attempt + 1}/{_RPM_MAX_RETRIES}): {e}]{Style.RESET_ALL}", flush=True)
+                print(
+                    f"  {Fore.RED}[reason error (attempt {attempt + 1}/{_RPM_MAX_RETRIES}): {e}]{Style.RESET_ALL}",
+                    flush=True,
+                )
                 if not _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
                     time.sleep(15 * (attempt + 1))
 
@@ -483,10 +524,15 @@ def _reason_traced(
     explore_new = [a for a in not_taken if a.startswith(("go to", "open"))]
     explore_any = [a for a in offered if a.startswith(("go to", "open"))]
     fallback = (explore_new or explore_any or not_taken or offered)[0]
-    nemo_relay.scope.event("reasoner_fallback", handle=ep_handle, data={
-        "step": step_num, "fallback_action": fallback,
-        "last_error": str(last_exc)[:300] if last_exc else None,
-    })
+    nemo_relay.scope.event(
+        "reasoner_fallback",
+        handle=ep_handle,
+        data={
+            "step": step_num,
+            "fallback_action": fallback,
+            "last_error": str(last_exc)[:300] if last_exc else None,
+        },
+    )
     return fallback
 
 
@@ -505,12 +551,19 @@ def _sync_memory_step(
 ) -> list[str]:
     """DSPy memory update + Haystack embed + recall. Mutates mem/store/all_facts in-place. Returns recalled facts."""
     mem_content = {
-        "messages": [{"role": "user", "content": f"task={goal}\nlast_action={mem.last_action or 'none'}\nobs={cur_obs}\nprogress={mem.progress}"}],
+        "messages": [
+            {
+                "role": "user",
+                "content": f"task={goal}\nlast_action={mem.last_action or 'none'}\nobs={cur_obs}\nprogress={mem.progress}",
+            }
+        ],
         "model": _SUMMARIZER_MODEL,
     }
     with _LLMSpan("memory-updater", _SUMMARIZER_MODEL, mem_content, ep_handle) as span:
         _throttle()
-        upd = update_fn(task=goal, last_action=mem.last_action or "none", observation=cur_obs, current_progress=mem.progress)
+        upd = update_fn(
+            task=goal, last_action=mem.last_action or "none", observation=cur_obs, current_progress=mem.progress
+        )
 
         def _first_line(s: str) -> str:
             return (s or "").strip().splitlines()[0].strip()
@@ -520,7 +573,9 @@ def _sync_memory_step(
         de = (upd.dead_end or "").strip()
         if de and de == (mem.last_action or ""):
             mem.add_dead_end(de)
-        span.end(result={"new_fact": upd.new_fact, "dead_end": upd.dead_end, "progress": mem.progress, "plan": mem.plan})
+        span.end(
+            result={"new_fact": upd.new_fact, "dead_end": upd.dead_end, "progress": mem.progress, "plan": mem.plan}
+        )
 
     raw_fact = (upd.new_fact or "").strip().splitlines()[0].strip()
     fact = ground_fact(raw_fact, cur_obs)
@@ -531,8 +586,11 @@ def _sync_memory_step(
         if fact not in all_facts:
             all_facts.append(fact)
 
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'MEMORY':<9}{Style.RESET_ALL}{Fore.YELLOW}"
-          f"progress=[{mem.progress}]  plan=[{mem.plan}]  dead_ends={mem.dead_ends[-5:]}{Style.RESET_ALL}", flush=True)
+    print(
+        f"{Fore.YELLOW}{Style.BRIGHT}{'MEMORY':<9}{Style.RESET_ALL}{Fore.YELLOW}"
+        f"progress=[{mem.progress}]  plan=[{mem.plan}]  dead_ends={mem.dead_ends[-5:]}{Style.RESET_ALL}",
+        flush=True,
+    )
 
     facts: list[str] = []
     if store.count_documents() > 0:
@@ -541,7 +599,10 @@ def _sync_memory_step(
         facts = [d.content for d in retriever.run(query_embedding=q, top_k=_TOP_K_MEMORY)["documents"]]
 
     recall_str = "  |  ".join(facts) if facts else "(none yet)"
-    print(f"{Fore.MAGENTA}{Style.BRIGHT}{'RECALL':<9}{Style.RESET_ALL}{Fore.MAGENTA}{recall_str}{Style.RESET_ALL}", flush=True)
+    print(
+        f"{Fore.MAGENTA}{Style.BRIGHT}{'RECALL':<9}{Style.RESET_ALL}{Fore.MAGENTA}{recall_str}{Style.RESET_ALL}",
+        flush=True,
+    )
 
     return facts
 
@@ -557,31 +618,55 @@ def _sync_reflect(
 ) -> Any | None:
     """Reflector LLM call with RPM retry. Returns Reflect prediction or None on total failure."""
     ref_content = {
-        "messages": [{"role": "user", "content": f"task={goal}\noutcome={outcome}\ntrajectory={trajectory}\nplaybook={current_playbook}"}],
+        "messages": [
+            {
+                "role": "user",
+                "content": f"task={goal}\noutcome={outcome}\ntrajectory={trajectory}\nplaybook={current_playbook}",
+            }
+        ],
         "model": _SUMMARIZER_MODEL,
     }
     wait = _RPM_WAIT_BASE
     for attempt in range(_RPM_MAX_RETRIES):
         ref_req = nemo_relay.LLMRequest({}, ref_content)
-        ref_lh = nemo_relay.llm.call("reflector", ref_req, handle=ep_handle, model_name=_SUMMARIZER_MODEL, data={"attempt": attempt})
+        ref_lh = nemo_relay.llm.call(
+            "reflector", ref_req, handle=ep_handle, model_name=_SUMMARIZER_MODEL, data={"attempt": attempt}
+        )
         try:
             _throttle()
             with dspy.context(lm=reflection_lm):
                 refl = reflect_fn(task=goal, outcome=outcome, trajectory=trajectory, current_playbook=current_playbook)
-            nemo_relay.llm.call_end(ref_lh, {"helpful_ids": refl.helpful_ids, "harmful_ids": refl.harmful_ids, "new_strategies": refl.new_strategies})
+            nemo_relay.llm.call_end(
+                ref_lh,
+                {
+                    "helpful_ids": refl.helpful_ids,
+                    "harmful_ids": refl.harmful_ids,
+                    "new_strategies": refl.new_strategies,
+                },
+            )
             return refl
         except Exception as e:
             nemo_relay.llm.call_end(ref_lh, {"error": str(e)[:300]})
             if _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
-                nemo_relay.scope.event("llm_rate_limit_hit", handle=ep_handle, data={
-                    "provider": "reflector", "model": _SUMMARIZER_MODEL,
-                    "attempt": attempt + 1, "wait_seconds": wait, "error": str(e)[:300],
-                })
+                nemo_relay.scope.event(
+                    "llm_rate_limit_hit",
+                    handle=ep_handle,
+                    data={
+                        "provider": "reflector",
+                        "model": _SUMMARIZER_MODEL,
+                        "attempt": attempt + 1,
+                        "wait_seconds": wait,
+                        "error": str(e)[:300],
+                    },
+                )
                 print(f"  {Fore.YELLOW}[relay] 429/RPM on reflector, waiting {wait:.0f}s{Style.RESET_ALL}", flush=True)
                 time.sleep(wait)
                 wait = min(wait * 2, _RPM_WAIT_CAP)
             else:
-                print(f"  {Fore.RED}[reflector error (attempt {attempt + 1}/{_RPM_MAX_RETRIES}): {e}]{Style.RESET_ALL}", flush=True)
+                print(
+                    f"  {Fore.RED}[reflector error (attempt {attempt + 1}/{_RPM_MAX_RETRIES}): {e}]{Style.RESET_ALL}",
+                    flush=True,
+                )
                 if not _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
                     time.sleep(15 * (attempt + 1))
     return None
@@ -598,13 +683,15 @@ def _make_nemo_response(text: str) -> dict:
         "parallel_tool_calls": False,
         "tool_choice": "none",
         "tools": [],
-        "output": [{
-            "id": "ace_msg",
-            "type": "message",
-            "role": "assistant",
-            "status": "completed",
-            "content": [{"type": "output_text", "text": text, "annotations": []}],
-        }],
+        "output": [
+            {
+                "id": "ace_msg",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": text, "annotations": []}],
+            }
+        ],
     }
 
 
@@ -733,43 +820,69 @@ class TalesAceAgent(SimpleResponsesAPIAgent):
         atif.register(f"atif-ep-{ep_label}")
 
         with nemo_relay.scope.scope(f"episode-{ep_label}", nemo_relay.ScopeType.Agent) as ep_handle:
-            nemo_relay.scope.event("episode_goal", handle=ep_handle, data={
-                "goal": goal,
-                "common_sense_hint": common_sense or None,
-                "framework": extra.get("framework", "alfworld"),
-                "task_no": extra.get("task_no", 0),
-                "split": extra.get("split", "train"),
-            })
-            nemo_relay.scope.event("playbook_injected", handle=ep_handle, data={
-                "bullet_count": len(self._playbook.items),
-                "playbook": self._playbook.render(k=_PLAYBOOK_CAP),
-            })
+            nemo_relay.scope.event(
+                "episode_goal",
+                handle=ep_handle,
+                data={
+                    "goal": goal,
+                    "common_sense_hint": common_sense or None,
+                    "framework": extra.get("framework", "alfworld"),
+                    "task_no": extra.get("task_no", 0),
+                    "split": extra.get("split", "train"),
+                },
+            )
+            nemo_relay.scope.event(
+                "playbook_injected",
+                handle=ep_handle,
+                data={
+                    "bullet_count": len(self._playbook.items),
+                    "playbook": self._playbook.render(k=_PLAYBOOK_CAP),
+                },
+            )
 
             for _ in range(self.config.max_steps):
                 print(f"{Fore.WHITE}{Style.DIM}{'-' * 70}  step {steps + 1}{Style.RESET_ALL}", flush=True)
-                print(f"{Fore.WHITE}{Style.DIM}{'OBS':<9}{Style.RESET_ALL}{Fore.WHITE}{Style.DIM}{cur_obs}{Style.RESET_ALL}", flush=True)
+                print(
+                    f"{Fore.WHITE}{Style.DIM}{'OBS':<9}{Style.RESET_ALL}{Fore.WHITE}{Style.DIM}{cur_obs}{Style.RESET_ALL}",
+                    flush=True,
+                )
 
                 # 3a. Memory update + embed + recall (sync, in thread)
                 facts = await asyncio.to_thread(
                     _sync_memory_step,
-                    self._update, goal, mem, cur_obs,
-                    store, retriever, all_facts, ep_handle,
+                    self._update,
+                    goal,
+                    mem,
+                    cur_obs,
+                    store,
+                    retriever,
+                    all_facts,
+                    ep_handle,
                 )
 
                 # 3b. Choose action via traced reasoner (sync, in thread)
                 offered = [
-                    a for a in admissible
+                    a
+                    for a in admissible
                     if a not in mem.dead_ends and not (a.startswith(_INFO_ACTIONS) and a in mem.taken)
                 ]
                 offered = offered or [a for a in admissible if a not in mem.dead_ends] or admissible
 
                 action = await asyncio.to_thread(
                     _reason_traced,
-                    goal, mem, facts, offered,
-                    self._playbook.render(), common_sense,
-                    ep_handle, steps + 1,
+                    goal,
+                    mem,
+                    facts,
+                    offered,
+                    self._playbook.render(),
+                    common_sense,
+                    ep_handle,
+                    steps + 1,
                 )
-                print(f"{Fore.GREEN}{Style.BRIGHT}{'ACTION':<9}{Style.RESET_ALL}{Fore.GREEN}{action}{Style.RESET_ALL}", flush=True)
+                print(
+                    f"{Fore.GREEN}{Style.BRIGHT}{'ACTION':<9}{Style.RESET_ALL}{Fore.GREEN}{action}{Style.RESET_ALL}",
+                    flush=True,
+                )
 
                 # 3c. Step env (async HTTP)
                 step_resp = await self.server_client.post(
@@ -797,37 +910,51 @@ class TalesAceAgent(SimpleResponsesAPIAgent):
                 steps += 1
 
                 # [TRACE 1] per-step event
-                nemo_relay.scope.event("agent_step", handle=ep_handle, data={
-                    "step": steps,
-                    "observation": cur_obs,
-                    "action_taken": action,
-                    "progress": mem.progress,
-                    "plan": mem.plan,
-                    "recalled_facts": facts,
-                    "dead_ends": mem.dead_ends[-8:],
-                    "result_obs": new_obs[:400],
-                    "reward": step_data.reward,
-                    "is_done": bool(done),
-                })
+                nemo_relay.scope.event(
+                    "agent_step",
+                    handle=ep_handle,
+                    data={
+                        "step": steps,
+                        "observation": cur_obs,
+                        "action_taken": action,
+                        "progress": mem.progress,
+                        "plan": mem.plan,
+                        "recalled_facts": facts,
+                        "dead_ends": mem.dead_ends[-8:],
+                        "result_obs": new_obs[:400],
+                        "reward": step_data.reward,
+                        "is_done": bool(done),
+                    },
+                )
 
                 cur_obs = new_obs
                 if done or step_data.truncated:
                     break
 
             outcome = f"SOLVED in {steps} steps" if total_reward > 0 else f"FAILED at {steps} steps"
-            nemo_relay.scope.event("episode_outcome", handle=ep_handle, data={
-                "label": ep_label, "goal": goal, "outcome": outcome,
-                "steps": steps, "total_reward": total_reward,
-                "trajectory_tail": "\n".join(traj)[-2000:],
-            })
+            nemo_relay.scope.event(
+                "episode_outcome",
+                handle=ep_handle,
+                data={
+                    "label": ep_label,
+                    "goal": goal,
+                    "outcome": outcome,
+                    "steps": steps,
+                    "total_reward": total_reward,
+                    "trajectory_tail": "\n".join(traj)[-2000:],
+                },
+            )
 
             # 4. Reflector (sync, in thread)
             traj_str = "\n".join(traj)
             pb_size_before = len(self._playbook.items)
             refl = await asyncio.to_thread(
                 _sync_reflect,
-                self._reflect, self._reflection_lm,
-                goal, outcome, traj_str[-3000:],
+                self._reflect,
+                self._reflection_lm,
+                goal,
+                outcome,
+                traj_str[-3000:],
                 self._playbook.render_meta() or "(empty)",
                 ep_handle,
             )
@@ -836,22 +963,35 @@ class TalesAceAgent(SimpleResponsesAPIAgent):
                 obs_lines = [line for line in traj_str.splitlines() if not line.startswith(">")]
                 last_obs = obs_lines[-1][:200] if obs_lines else ""
                 # [TRACE 2] reflection_summary
-                nemo_relay.scope.event("reflection_summary", handle=ep_handle, data={
-                    "goal": goal, "outcome": outcome, "steps_taken": steps,
-                    "last_observation": last_obs,
-                    "helpful_strategy_ids": refl.helpful_ids,
-                    "harmful_strategy_ids": refl.harmful_ids,
-                    "next_best_strategies": refl.new_strategies,
-                    "playbook_size_before": pb_size_before,
-                    "current_playbook": self._playbook.render_meta(),
-                })
+                nemo_relay.scope.event(
+                    "reflection_summary",
+                    handle=ep_handle,
+                    data={
+                        "goal": goal,
+                        "outcome": outcome,
+                        "steps_taken": steps,
+                        "last_observation": last_obs,
+                        "helpful_strategy_ids": refl.helpful_ids,
+                        "harmful_strategy_ids": refl.harmful_ids,
+                        "next_best_strategies": refl.new_strategies,
+                        "playbook_size_before": pb_size_before,
+                        "current_playbook": self._playbook.render_meta(),
+                    },
+                )
                 _curate(self._playbook, refl)
-                nemo_relay.scope.event("playbook_updated", handle=ep_handle, data={
-                    "playbook_size_after": len(self._playbook.items),
-                    "bullets_delta": len(self._playbook.items) - pb_size_before,
-                    "playbook_snapshot": self._playbook.render_meta(),
-                })
-                print(f"{Fore.BLUE}{Style.BRIGHT}[{ep_label}] {outcome}; playbook now {len(self._playbook.items)} bullets{Style.RESET_ALL}", flush=True)
+                nemo_relay.scope.event(
+                    "playbook_updated",
+                    handle=ep_handle,
+                    data={
+                        "playbook_size_after": len(self._playbook.items),
+                        "bullets_delta": len(self._playbook.items) - pb_size_before,
+                        "playbook_snapshot": self._playbook.render_meta(),
+                    },
+                )
+                print(
+                    f"{Fore.BLUE}{Style.BRIGHT}[{ep_label}] {outcome}; playbook now {len(self._playbook.items)} bullets{Style.RESET_ALL}",
+                    flush=True,
+                )
                 print(f"{Fore.BLUE}{self._playbook.render_meta()}{Style.RESET_ALL}", flush=True)
 
         # Export ATIF trajectory for this episode

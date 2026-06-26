@@ -16,6 +16,7 @@
 Heavy dependencies (dspy, haystack, nemo_relay, NVIDIA API) are mocked at import
 time so these tests run offline without credentials.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 
 # ---------------------------------------------------------------------------
 # Stub heavyweight deps before importing app
@@ -40,10 +42,16 @@ def _make_dspy_stub():
     class _FakePredict:
         def __init__(self, sig):
             self._sig = sig
+
         def __call__(self, **kwargs):
             return SimpleNamespace(
-                new_fact="drawer 1: empty", dead_end="none", progress="task started", plan="explore",
-                helpful_ids="none", harmful_ids="none", new_strategies="",
+                new_fact="drawer 1: empty",
+                dead_end="none",
+                progress="task started",
+                plan="explore",
+                helpful_ids="none",
+                harmful_ids="none",
+                new_strategies="",
             )
 
     class _FakeLM:
@@ -58,7 +66,8 @@ def _make_nemo_relay_stub():
     mod = types.ModuleType("nemo_relay")
 
     class _FakeLLMRequest:
-        def __init__(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            pass
 
     class _FakeExporterConfig:
         output_directory = ""
@@ -66,20 +75,37 @@ def _make_nemo_relay_stub():
         mode = None
 
     class _FakeAtofExporter:
-        def __init__(self, cfg=None): pass
-        def register(self, name): pass
-        def deregister(self, name): pass
-        def export_json(self): return "{}"
+        def __init__(self, cfg=None):
+            pass
+
+        def register(self, name):
+            pass
+
+        def deregister(self, name):
+            pass
+
+        def export_json(self):
+            return "{}"
 
     class _FakeAtifExporter:
-        def __init__(self, *a, **kw): pass
-        def register(self, name): pass
-        def deregister(self, name): pass
-        def export_json(self): return "{}"
+        def __init__(self, *a, **kw):
+            pass
+
+        def register(self, name):
+            pass
+
+        def deregister(self, name):
+            pass
+
+        def export_json(self):
+            return "{}"
 
     class _FakeScopeCtx:
-        def __enter__(self): return "ep_handle"
-        def __exit__(self, *a): return False
+        def __enter__(self):
+            return "ep_handle"
+
+        def __exit__(self, *a):
+            return False
 
     scope_mod = types.ModuleType("nemo_relay.scope")
     scope_mod.scope = MagicMock(return_value=_FakeScopeCtx())
@@ -108,8 +134,11 @@ def _make_haystack_stubs():
     hs_ret_im = types.ModuleType("haystack.components.retrievers.in_memory")
 
     class _FakeRetriever:
-        def __init__(self, document_store=None): pass
-        def run(self, query_embedding=None, top_k=10): return {"documents": []}
+        def __init__(self, document_store=None):
+            pass
+
+        def run(self, query_embedding=None, top_k=10):
+            return {"documents": []}
 
     hs_ret_im.InMemoryEmbeddingRetriever = _FakeRetriever
     hs_dc = types.ModuleType("haystack.dataclasses")
@@ -119,9 +148,14 @@ def _make_haystack_stubs():
     hs_ds_im = types.ModuleType("haystack.document_stores.in_memory")
 
     class _FakeDocStore:
-        def __init__(self): self._docs = []
-        def count_documents(self): return len(self._docs)
-        def write_documents(self, docs, policy=None): self._docs.extend(docs)
+        def __init__(self):
+            self._docs = []
+
+        def count_documents(self):
+            return len(self._docs)
+
+        def write_documents(self, docs, policy=None):
+            self._docs.extend(docs)
 
     hs_ds_im.InMemoryDocumentStore = _FakeDocStore
     hs_ds_types = types.ModuleType("haystack.document_stores.types")
@@ -137,14 +171,24 @@ def _make_haystack_stubs():
     hi_emb_nv = types.ModuleType("haystack_integrations.components.embedders.nvidia")
 
     class _FakeDocEmb:
-        def __init__(self, **kw): pass
-        def warm_up(self): pass
-        def run(self, documents=None): return {"documents": documents or []}
+        def __init__(self, **kw):
+            pass
+
+        def warm_up(self):
+            pass
+
+        def run(self, documents=None):
+            return {"documents": documents or []}
 
     class _FakeTxtEmb:
-        def __init__(self, **kw): pass
-        def warm_up(self): pass
-        def run(self, text=None): return {"embedding": [0.0] * 8}
+        def __init__(self, **kw):
+            pass
+
+        def warm_up(self):
+            pass
+
+        def run(self, text=None):
+            return {"embedding": [0.0] * 8}
 
     hi_emb_nv.NvidiaDocumentEmbedder = _FakeDocEmb
     hi_emb_nv.NvidiaTextEmbedder = _FakeTxtEmb
@@ -153,7 +197,9 @@ def _make_haystack_stubs():
     hi_gen_nv = types.ModuleType("haystack_integrations.components.generators.nvidia")
 
     class _FakeGen:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
         def run(self, messages=None, tools=None, generation_kwargs=None):
             tc = SimpleNamespace(arguments={"action": "look"})
             return {"replies": [SimpleNamespace(tool_calls=[tc], text=None)]}
@@ -186,7 +232,13 @@ _dspy_stub = _make_dspy_stub()
 _nemo_relay_stub, _scope_stub, _llm_stub = _make_nemo_relay_stub()
 _hs_stubs = _make_haystack_stubs()
 
-for name, mod in {"dspy": _dspy_stub, "nemo_relay": _nemo_relay_stub, "nemo_relay.scope": _scope_stub, "nemo_relay.llm": _llm_stub, **_hs_stubs}.items():
+for name, mod in {
+    "dspy": _dspy_stub,
+    "nemo_relay": _nemo_relay_stub,
+    "nemo_relay.scope": _scope_stub,
+    "nemo_relay.llm": _llm_stub,
+    **_hs_stubs,
+}.items():
     sys.modules.setdefault(name, mod)
 
 # colorama stub
@@ -197,6 +249,8 @@ if "colorama" not in sys.modules:
     _col.init = lambda **kw: None
     sys.modules["colorama"] = _col
 
+from nemo_gym.config_types import ResourcesServerRef
+from nemo_gym.server_utils import ServerClient
 from responses_api_agents.tales_ace_agent.app import (  # noqa: E402
     Playbook,
     TalesAceAgent,
@@ -210,8 +264,6 @@ from responses_api_agents.tales_ace_agent.app import (  # noqa: E402
     is_noop,
     parse_goal,
 )
-from nemo_gym.config_types import ResourcesServerRef
-from nemo_gym.server_utils import ServerClient
 
 
 # ---------------------------------------------------------------------------
@@ -238,16 +290,22 @@ class _FakeHttpResp:
         self.status = 200
         self.ok = True
 
-    async def json(self): return self._payload
-    async def read(self): return json.dumps(self._payload).encode()
+    async def json(self):
+        return self._payload
+
+    async def read(self):
+        return json.dumps(self._payload).encode()
 
     @property
     def content(self):
         class _Body:
-            async def read(inner): return json.dumps(self._payload).encode()
+            async def read(inner):
+                return json.dumps(self._payload).encode()
+
         return _Body()
 
-    def raise_for_status(self): return None
+    def raise_for_status(self):
+        return None
 
 
 def _wire_mock_client(agent, responses_per_url: dict) -> list:
@@ -493,9 +551,12 @@ class TestRun:
         )
 
         async def _fake_to_thread(fn, *args, **kwargs):
-            if fn.__name__ == "_sync_memory_step": return []
-            if fn.__name__ == "_reason_traced": return "look"
-            if fn.__name__ == "_sync_reflect": return None
+            if fn.__name__ == "_sync_memory_step":
+                return []
+            if fn.__name__ == "_reason_traced":
+                return "look"
+            if fn.__name__ == "_sync_reflect":
+                return None
             return fn(*args, **kwargs)
 
         with patch("asyncio.to_thread", side_effect=_fake_to_thread):
@@ -520,9 +581,12 @@ class TestRun:
         )
 
         async def _fake_to_thread(fn, *args, **kwargs):
-            if fn.__name__ == "_sync_memory_step": return []
-            if fn.__name__ == "_reason_traced": return "look"
-            if fn.__name__ == "_sync_reflect": return None
+            if fn.__name__ == "_sync_memory_step":
+                return []
+            if fn.__name__ == "_reason_traced":
+                return "look"
+            if fn.__name__ == "_sync_reflect":
+                return None
             return fn(*args, **kwargs)
 
         with patch("asyncio.to_thread", side_effect=_fake_to_thread):
@@ -535,19 +599,29 @@ class TestRun:
         """Reflector returning new_strategies across two episodes grows the playbook."""
         agent = _make_agent(max_steps=5)
 
-        refl_result = SimpleNamespace(helpful_ids="none", harmful_ids="none", new_strategies="Always examine the target container first when searching.")
+        refl_result = SimpleNamespace(
+            helpful_ids="none",
+            harmful_ids="none",
+            new_strategies="Always examine the target container first when searching.",
+        )
 
         async def _fake_to_thread(fn, *args, **kwargs):
-            if fn.__name__ == "_sync_memory_step": return []
-            if fn.__name__ == "_reason_traced": return "look"
-            if fn.__name__ == "_sync_reflect": return refl_result
+            if fn.__name__ == "_sync_memory_step":
+                return []
+            if fn.__name__ == "_reason_traced":
+                return "look"
+            if fn.__name__ == "_sync_reflect":
+                return refl_result
             return fn(*args, **kwargs)
 
         for _ in range(2):
-            _wire_mock_client(agent, {
-                "/reset": [_reset()],
-                "/step": [_step(obs="done", reward=1.0, terminated=True)],
-            })
+            _wire_mock_client(
+                agent,
+                {
+                    "/reset": [_reset()],
+                    "/step": [_step(obs="done", reward=1.0, terminated=True)],
+                },
+            )
             with patch("asyncio.to_thread", side_effect=_fake_to_thread):
                 await agent.run(_fake_request(), _run_body())
 
@@ -561,7 +635,12 @@ class TestRun:
         _wire_mock_client(
             agent,
             {
-                "/reset": [{"observation": "obs. Your task is to: find cup.", "info": {"admissible_commands": [["look", "take cup"]]}}],
+                "/reset": [
+                    {
+                        "observation": "obs. Your task is to: find cup.",
+                        "info": {"admissible_commands": [["look", "take cup"]]},
+                    }
+                ],
                 "/step": [_step(obs="done", reward=1.0, terminated=True, admissible=[["look"]])],
             },
         )
@@ -569,11 +648,13 @@ class TestRun:
 
         async def _fake_to_thread(fn, *args, **kwargs):
             nonlocal action_chosen
-            if fn.__name__ == "_sync_memory_step": return []
+            if fn.__name__ == "_sync_memory_step":
+                return []
             if fn.__name__ == "_reason_traced":
                 action_chosen = args[3][0]  # first item of offered
                 return action_chosen
-            if fn.__name__ == "_sync_reflect": return None
+            if fn.__name__ == "_sync_reflect":
+                return None
             return fn(*args, **kwargs)
 
         with patch("asyncio.to_thread", side_effect=_fake_to_thread):

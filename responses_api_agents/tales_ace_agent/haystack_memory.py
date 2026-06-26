@@ -39,22 +39,25 @@ import threading
 import time
 
 import dspy
-from colorama import Fore, Style, init as colorama_init
+from colorama import Fore, Style
+from colorama import init as colorama_init
 from dotenv import load_dotenv
+
 
 colorama_init(autoreset=True)
 
+from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
 from haystack.dataclasses import ChatMessage, Document
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.document_stores.types import DuplicatePolicy
-from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
 from haystack.tools import Tool
 from haystack.utils import Secret
-from haystack_integrations.components.generators.nvidia import NvidiaChatGenerator
 from haystack_integrations.components.embedders.nvidia import (
     NvidiaDocumentEmbedder,
     NvidiaTextEmbedder,
 )
+from haystack_integrations.components.generators.nvidia import NvidiaChatGenerator
+
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
@@ -71,7 +74,7 @@ EMBED_MODEL = "nvidia/nv-embedqa-e5-v5"
 # GAMMA: discount factor derived from H so that a 1-step solve scores ~1.0 and
 #   an H-step solve scores ~1/e. Do not set manually -- change H instead.
 H = MAX_ITERS = 50
-GAMMA = math.exp(-1.0 / (H - 1))   # ~0.9798, for the same return metric as baseline
+GAMMA = math.exp(-1.0 / (H - 1))  # ~0.9798, for the same return metric as baseline
 
 # TOP_K_MEMORY: facts returned from the Haystack vector store each step.
 #   3 keeps the prompt tight and avoids redundant context on small stores.
@@ -85,7 +88,7 @@ NUM_THREADS = 1
 # Rate-limiting: 28 RPM cap gives safe headroom under the 40 RPM free-tier limit.
 # Sliding-window limiter covers ALL NVIDIA API calls (DSPy LM + embed + reasoner).
 _RPM_CAP = 28
-_MIN_GAP = 60.0 / _RPM_CAP   # ~2.14 s minimum gap between consecutive calls
+_MIN_GAP = 60.0 / _RPM_CAP  # ~2.14 s minimum gap between consecutive calls
 _rate_lock = threading.Lock()
 _call_times: collections.deque = collections.deque()  # monotonic timestamps in last 60 s
 
@@ -98,40 +101,41 @@ NOOP_MARKERS = ["nothing happens", "nothing special", "already"]
 INFO_ACTIONS = ("examine", "look", "inventory")
 
 summarizer_lm = dspy.LM(
-    f"openai/{SUMMARIZER_MODEL}", api_key=NVIDIA_API_KEY, api_base=BASE_URL,
-    temperature=0.4, max_tokens=600, num_retries=10,
+    f"openai/{SUMMARIZER_MODEL}",
+    api_key=NVIDIA_API_KEY,
+    api_base=BASE_URL,
+    temperature=0.4,
+    max_tokens=600,
+    num_retries=10,
 )
 dspy.configure(lm=summarizer_lm)
 
 # Common-sense object placement filter: objects are never found in these locations.
 # Used to de-prioritize implausible "go to" actions for the target object.
 _UNLIKELY_LOCATIONS: dict[str, list[str]] = {
-    "cd":            ["vase", "plant", "bathtub", "toilet", "sink", "fridge",
-                      "microwave", "garbagecan", "pot", "pan"],
-    "book":          ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
-    "laptop":        ["vase", "plant", "bathtub", "toilet", "sink", "fridge",
-                      "microwave", "garbagecan"],
-    "cellphone":     ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
-    "phone":         ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
-    "pen":           ["bathtub", "toilet", "fridge", "microwave"],
-    "pencil":        ["bathtub", "toilet", "fridge", "microwave"],
-    "keychain":      ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
-    "creditcard":    ["bathtub", "toilet", "fridge", "microwave", "vase"],
+    "cd": ["vase", "plant", "bathtub", "toilet", "sink", "fridge", "microwave", "garbagecan", "pot", "pan"],
+    "book": ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
+    "laptop": ["vase", "plant", "bathtub", "toilet", "sink", "fridge", "microwave", "garbagecan"],
+    "cellphone": ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
+    "phone": ["vase", "plant", "bathtub", "toilet", "fridge", "microwave"],
+    "pen": ["bathtub", "toilet", "fridge", "microwave"],
+    "pencil": ["bathtub", "toilet", "fridge", "microwave"],
+    "keychain": ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
+    "creditcard": ["bathtub", "toilet", "fridge", "microwave", "vase"],
     "remotecontrol": ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
-    "newspaper":     ["bathtub", "toilet", "fridge", "sink", "vase", "plant",
-                      "microwave"],
-    "magazine":      ["bathtub", "toilet", "fridge", "sink", "vase", "microwave"],
-    "watch":         ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
-    "candle":        ["bathtub", "toilet", "fridge", "vase", "plant"],
-    "statue":        ["bathtub", "toilet", "fridge", "microwave"],
-    "spraybottle":   ["bathtub", "toilet", "fridge", "vase", "plant"],
-    "soapbottle":    ["bathtub", "toilet", "fridge", "vase", "plant"],
-    "knife":         ["vase", "plant"],
-    "fork":          ["vase", "plant"],
-    "spoon":         ["vase", "plant"],
-    "toiletpaper":   ["fridge", "microwave", "vase", "plant"],
-    "handtowel":     ["fridge", "microwave", "vase"],
-    "cloth":         ["fridge", "microwave"],
+    "newspaper": ["bathtub", "toilet", "fridge", "sink", "vase", "plant", "microwave"],
+    "magazine": ["bathtub", "toilet", "fridge", "sink", "vase", "microwave"],
+    "watch": ["bathtub", "toilet", "fridge", "microwave", "vase", "plant"],
+    "candle": ["bathtub", "toilet", "fridge", "vase", "plant"],
+    "statue": ["bathtub", "toilet", "fridge", "microwave"],
+    "spraybottle": ["bathtub", "toilet", "fridge", "vase", "plant"],
+    "soapbottle": ["bathtub", "toilet", "fridge", "vase", "plant"],
+    "knife": ["vase", "plant"],
+    "fork": ["vase", "plant"],
+    "spoon": ["vase", "plant"],
+    "toiletpaper": ["fridge", "microwave", "vase", "plant"],
+    "handtowel": ["fridge", "microwave", "vase"],
+    "cloth": ["fridge", "microwave"],
 }
 
 
@@ -140,8 +144,9 @@ def _common_sense_hint(goal: str) -> str:
     g = goal.lower()
     for obj, unlikely in _UNLIKELY_LOCATIONS.items():
         if obj in g:
-            return (f"Common sense: {obj}s are NEVER found in "
-                    f"{', '.join(unlikely)}. Do NOT navigate to those locations.")
+            return (
+                f"Common sense: {obj}s are NEVER found in {', '.join(unlikely)}. Do NOT navigate to those locations."
+            )
     return ""
 
 
@@ -155,19 +160,37 @@ def _c(tag, text, color, dim=False):
     print(f"{color}{style}{tag:<9}{Style.RESET_ALL}{color}{text}{Style.RESET_ALL}", flush=True)
 
 
-def log_goal(g):  _c("GOAL", g, Fore.CYAN)
-def log_step(n):  print(f"{Fore.WHITE}{Style.DIM}{'-' * 70}  step {n}{Style.RESET_ALL}", flush=True)
-def log_obs(o):   _c("OBS", o, Fore.WHITE, dim=True)
-def log_mem(m):   _c("MEMORY", m, Fore.YELLOW)
-def log_recall(f):_c("RECALL", "  |  ".join(f) if f else "(none yet)", Fore.MAGENTA)
-def log_action(a):_c("ACTION", a, Fore.GREEN)
+def log_goal(g):
+    _c("GOAL", g, Fore.CYAN)
+
+
+def log_step(n):
+    print(f"{Fore.WHITE}{Style.DIM}{'-' * 70}  step {n}{Style.RESET_ALL}", flush=True)
+
+
+def log_obs(o):
+    _c("OBS", o, Fore.WHITE, dim=True)
+
+
+def log_mem(m):
+    _c("MEMORY", m, Fore.YELLOW)
+
+
+def log_recall(f):
+    _c("RECALL", "  |  ".join(f) if f else "(none yet)", Fore.MAGENTA)
+
+
+def log_action(a):
+    _c("ACTION", a, Fore.GREEN)
 
 
 def log_result(success, steps, ret):
     color = Fore.GREEN if success else Fore.RED
     word = "SOLVED" if success else "FAILED"
-    print(f"{color}{Style.BRIGHT}{word}{Style.RESET_ALL}{color} in {steps} steps "
-          f"(return={ret:.3f}){Style.RESET_ALL}", flush=True)
+    print(
+        f"{color}{Style.BRIGHT}{word}{Style.RESET_ALL}{color} in {steps} steps (return={ret:.3f}){Style.RESET_ALL}",
+        flush=True,
+    )
 
 
 # --- rate limit + Haystack singletons -------------------------------------- #
@@ -193,16 +216,17 @@ def _throttle():
 def _reasoner():
     if "gen" not in _HAYSTACK:
         _HAYSTACK["gen"] = NvidiaChatGenerator(
-            model=REASONER_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"),
-            api_base_url=BASE_URL, max_retries=8,
+            model=REASONER_MODEL,
+            api_key=Secret.from_env_var("NVIDIA_API_KEY"),
+            api_base_url=BASE_URL,
+            max_retries=8,
         )
     return _HAYSTACK["gen"]
 
 
 def _doc_embedder():
     if "doc" not in _HAYSTACK:
-        e = NvidiaDocumentEmbedder(model=EMBED_MODEL,
-                                   api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=BASE_URL)
+        e = NvidiaDocumentEmbedder(model=EMBED_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=BASE_URL)
         e.warm_up()
         _HAYSTACK["doc"] = e
     return _HAYSTACK["doc"]
@@ -210,8 +234,7 @@ def _doc_embedder():
 
 def _text_embedder():
     if "txt" not in _HAYSTACK:
-        e = NvidiaTextEmbedder(model=EMBED_MODEL,
-                               api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=BASE_URL)
+        e = NvidiaTextEmbedder(model=EMBED_MODEL, api_key=Secret.from_env_var("NVIDIA_API_KEY"), api_url=BASE_URL)
         e.warm_up()
         _HAYSTACK["txt"] = e
     return _HAYSTACK["txt"]
@@ -225,10 +248,17 @@ def make_action_tool(admissible):
     return Tool(
         name="take_action",
         description="Choose the single best next action toward completing the task.",
-        parameters={"type": "object", "properties": {
-            "action": {"type": "string", "enum": list(admissible),
-                       "description": "next action, copied verbatim from the list"}},
-            "required": ["action"]},
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": list(admissible),
+                    "description": "next action, copied verbatim from the list",
+                }
+            },
+            "required": ["action"],
+        },
         function=lambda action: action,
     )
 
@@ -238,8 +268,8 @@ class MemoryState:
     def __init__(self):
         self.progress = "nothing done yet"
         self.plan = "explore to locate the target object(s)"
-        self.dead_ends = []          # ordered, de-duplicated
-        self.taken = []              # every action taken this episode
+        self.dead_ends = []  # ordered, de-duplicated
+        self.taken = []  # every action taken this episode
         self.last_action = None
 
     def add_dead_end(self, action):
@@ -262,19 +292,21 @@ class MemoryUpdate(dspy.Signature):
     - progress states ONLY confirmed counts and what is currently held/placed
       (e.g. 'placed 1/2, holding none'); it must NOT assert any object's location.
     Always keep an explicit count for multi-object tasks (e.g. 'placed 1/2')."""
+
     task = dspy.InputField()
     last_action = dspy.InputField()
     observation = dspy.InputField()
     current_progress = dspy.InputField()
     new_fact: str = dspy.OutputField(
         desc="ONE world fact stated verbatim from THIS observation "
-             "(e.g. 'drawer 3: empty', 'soapbottle 1 on countertop 1'); every "
-             "object named here MUST appear in the observation, else output 'none'")
+        "(e.g. 'drawer 3: empty', 'soapbottle 1 on countertop 1'); every "
+        "object named here MUST appear in the observation, else output 'none'"
+    )
     dead_end: str = dspy.OutputField(
         desc="copy the exact last_action string if it made NO progress and must "
-             "not be repeated; otherwise EXACTLY the word 'none'")
-    progress: str = dspy.OutputField(
-        desc="confirmed counts + what's held/placed only; NO location claims")
+        "not be repeated; otherwise EXACTLY the word 'none'"
+    )
+    progress: str = dspy.OutputField(desc="confirmed counts + what's held/placed only; NO location claims")
     plan: str = dspy.OutputField(desc="next concrete subgoals, ordered, terse")
 
 
@@ -329,9 +361,12 @@ def _reason(goal, mem, facts, offered, playbook="", common_sense=""):
             out = _reasoner().run(
                 messages=[ChatMessage.from_system(REASON_SYS), ChatMessage.from_user(user)],
                 tools=[tool],
-                generation_kwargs={"tool_choice": "required",
-                                   "extra_body": {"chat_template_kwargs": {"thinking": True}},
-                                   "max_tokens": 6000, "temperature": 0.6},
+                generation_kwargs={
+                    "tool_choice": "required",
+                    "extra_body": {"chat_template_kwargs": {"thinking": True}},
+                    "max_tokens": 6000,
+                    "temperature": 0.6,
+                },
             )
             reply = out["replies"][0]
             if reply.tool_calls:
@@ -343,12 +378,10 @@ def _reason(goal, mem, facts, offered, playbook="", common_sense=""):
                     return a
             return offered[0]  # model returned nothing parseable but didn't throw
         except Exception as e:  # noqa: BLE001
-            print(f"  {Fore.RED}[reason error (attempt {attempt+1}/3): {e}]{Style.RESET_ALL}",
-                  flush=True)
+            print(f"  {Fore.RED}[reason error (attempt {attempt + 1}/3): {e}]{Style.RESET_ALL}", flush=True)
             if attempt < 2:
                 backoff = 15 * (attempt + 1)
-                print(f"  {Fore.YELLOW}[backing off {backoff}s before retry]{Style.RESET_ALL}",
-                      flush=True)
+                print(f"  {Fore.YELLOW}[backing off {backoff}s before retry]{Style.RESET_ALL}", flush=True)
                 time.sleep(backoff)
 
     # fallback after 3 failures: prefer nav/open actions not yet taken
@@ -364,7 +397,7 @@ class StructuredMemoryAgent(dspy.Module):
         super().__init__()
         self.max_iters = max_iters
         self.update = dspy.Predict(MemoryUpdate)
-        self.playbook = ""       # rung3 (ACE) sets this to the evolving strategy text
+        self.playbook = ""  # rung3 (ACE) sets this to the evolving strategy text
         self.prefill_facts = []  # rung3: facts discovered in a previous run (same goal+idx)
         self.prefill_dead_ends = []  # rung3: confirmed dead-ends from a previous run
 
@@ -378,11 +411,13 @@ class StructuredMemoryAgent(dspy.Module):
         # Pre-populate knowledge from a previous run with the same goal+idx.
         # Batch-embed to save API calls; prefill_dead_ends get injected without game steps.
         if self.prefill_facts:
-            print(f"  {Fore.CYAN}[prefill: loading {len(self.prefill_facts)} cached facts "
-                  f"+ {len(self.prefill_dead_ends)} dead-ends]{Style.RESET_ALL}", flush=True)
+            print(
+                f"  {Fore.CYAN}[prefill: loading {len(self.prefill_facts)} cached facts "
+                f"+ {len(self.prefill_dead_ends)} dead-ends]{Style.RESET_ALL}",
+                flush=True,
+            )
             _throttle()
-            docs = _doc_embedder().run(
-                documents=[Document(content=f) for f in self.prefill_facts])["documents"]
+            docs = _doc_embedder().run(documents=[Document(content=f) for f in self.prefill_facts])["documents"]
             store.write_documents(docs, policy=DuplicatePolicy.OVERWRITE)
             all_facts.extend(self.prefill_facts)
         for de in self.prefill_dead_ends:
@@ -403,9 +438,16 @@ class StructuredMemoryAgent(dspy.Module):
 
                 # 1. DELTA-update the structured memory (throttled: counts as 1 API call)
                 _throttle()
-                upd = self.update(task=goal, last_action=mem.last_action or "none",
-                                  observation=cur_obs, current_progress=mem.progress)
-                def _first_line(s): return (s or "").strip().splitlines()[0].strip()
+                upd = self.update(
+                    task=goal,
+                    last_action=mem.last_action or "none",
+                    observation=cur_obs,
+                    current_progress=mem.progress,
+                )
+
+                def _first_line(s):
+                    return (s or "").strip().splitlines()[0].strip()
+
                 mem.progress = _first_line(upd.progress) or mem.progress
                 mem.plan = _first_line(upd.plan) or mem.plan
                 de = (upd.dead_end or "").strip()
@@ -417,30 +459,28 @@ class StructuredMemoryAgent(dspy.Module):
                 fact = ground_fact(raw_fact, cur_obs)
                 if fact:
                     _throttle()
-                    docs = _doc_embedder().run(
-                        documents=[Document(content=fact)])["documents"]
+                    docs = _doc_embedder().run(documents=[Document(content=fact)])["documents"]
                     store.write_documents(docs, policy=DuplicatePolicy.OVERWRITE)
                     if fact not in all_facts:
                         all_facts.append(fact)
-                log_mem(f"progress=[{mem.progress}]  plan=[{mem.plan}]  "
-                        f"dead_ends={mem.dead_ends[-5:]}")
+                log_mem(f"progress=[{mem.progress}]  plan=[{mem.plan}]  dead_ends={mem.dead_ends[-5:]}")
 
                 # 3. recall COMPLEMENTARY facts
                 facts = []
                 if store.count_documents() > 0:
                     _throttle()
                     q = _text_embedder().run(text=f"{goal}\n{mem.plan}\n{cur_obs}")["embedding"]
-                    facts = [d.content for d in
-                             retriever.run(query_embedding=q, top_k=TOP_K_MEMORY)["documents"]]
+                    facts = [d.content for d in retriever.run(query_embedding=q, top_k=TOP_K_MEMORY)["documents"]]
                 log_recall(facts)
 
                 # 4. reason over a loop-broken action set
-                offered = [a for a in admissible
-                           if a not in mem.dead_ends
-                           and not (a.startswith(INFO_ACTIONS) and a in mem.taken)]
+                offered = [
+                    a
+                    for a in admissible
+                    if a not in mem.dead_ends and not (a.startswith(INFO_ACTIONS) and a in mem.taken)
+                ]
                 offered = offered or [a for a in admissible if a not in mem.dead_ends] or admissible
-                action = _reason(goal, mem, facts, offered,
-                                 playbook=self.playbook, common_sense=common_sense)
+                action = _reason(goal, mem, facts, offered, playbook=self.playbook, common_sense=common_sense)
                 log_action(action)
 
                 # 5. step + auto dead-end detection
@@ -458,46 +498,66 @@ class StructuredMemoryAgent(dspy.Module):
 
         ret = (GAMMA ** (steps - 1)) if reward else 0.0
         log_result(bool(reward), steps, ret)
-        return dspy.Prediction(goal=goal, trajectory="\n".join(traj),
-                               success=reward, steps=steps,
-                               facts_list=all_facts,
-                               dead_ends_list=list(mem.dead_ends))
+        return dspy.Prediction(
+            goal=goal,
+            trajectory="\n".join(traj),
+            success=reward,
+            steps=steps,
+            facts_list=all_facts,
+            dead_ends_list=list(mem.dead_ends),
+        )
 
 
-N_TEST = 10   # full run = same 10 devset tasks the baseline was scored on
+N_TEST = 10  # full run = same 10 devset tasks the baseline was scored on
 
 
 def main():
     global alfworld
     import json
+
     from dspy.datasets.alfworld import AlfWorld
+
     alfworld = AlfWorld(max_threads=NUM_THREADS)
 
     # --- full run: all N_TEST tasks, baseline-comparable numbers --------------
     if "--full" in sys.argv:
-        print(f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG2 FULL RUN: devset[:{N_TEST}] "
-              f"====={Style.RESET_ALL}", flush=True)
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG2 FULL RUN: devset[:{N_TEST}] ====={Style.RESET_ALL}", flush=True)
         t0 = time.time()
         succ, steps_solved, rets, records = [], [], [], []
         for i in range(N_TEST):
-            print(f"\n{Fore.CYAN}{Style.BRIGHT}--- task {i + 1}/{N_TEST} (devset[{i}]) ---"
-                  f"{Style.RESET_ALL}", flush=True)
+            print(
+                f"\n{Fore.CYAN}{Style.BRIGHT}--- task {i + 1}/{N_TEST} (devset[{i}]) ---{Style.RESET_ALL}", flush=True
+            )
             pred = StructuredMemoryAgent()(**alfworld.devset[i].inputs())
             ret = (GAMMA ** (pred.steps - 1)) if pred.success else 0.0
             rets.append(ret)
             succ.append(1.0 if pred.success else 0.0)
             if pred.success:
                 steps_solved.append(pred.steps)
-            records.append({"task": i + 1, "goal": pred.goal,
-                            "success": int(bool(pred.success)), "steps": pred.steps,
-                            "return": round(ret, 4), "trajectory": pred.trajectory})
+            records.append(
+                {
+                    "task": i + 1,
+                    "goal": pred.goal,
+                    "success": int(bool(pred.success)),
+                    "steps": pred.steps,
+                    "return": round(ret, 4),
+                    "trajectory": pred.trajectory,
+                }
+            )
         avg_ret = sum(rets) / len(rets)
         succ_pct = 100.0 * sum(succ) / len(succ)
         avg_steps = (sum(steps_solved) / len(steps_solved)) if steps_solved else float("nan")
         with open("results_rung2.json", "w") as f:
-            json.dump({"label": "rung2", "gamma": GAMMA,
-                       "summary": {"return": avg_ret, "success": succ_pct,
-                                   "avg_steps": avg_steps}, "games": records}, f, indent=2)
+            json.dump(
+                {
+                    "label": "rung2",
+                    "gamma": GAMMA,
+                    "summary": {"return": avg_ret, "success": succ_pct, "avg_steps": avg_steps},
+                    "games": records,
+                },
+                f,
+                indent=2,
+            )
         print(f"\n{'=' * 56}\n  RUNG2 (Haystack structured memory) vs baseline\n{'=' * 56}")
         print(f"  {'':<10}{'return':>10}{'success%':>11}{'avg_steps':>11}")
         print(f"  {'baseline':<10}{0.485:>10.3f}{60.0:>10.1f}%{12.2:>11.1f}   (from log)")
@@ -510,13 +570,15 @@ def main():
     if "--task" in sys.argv:
         idx = int(sys.argv[sys.argv.index("--task") + 1])
 
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG2 smoke: devset[{idx}] "
-          f"====={Style.RESET_ALL}", flush=True)
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG2 smoke: devset[{idx}] ====={Style.RESET_ALL}", flush=True)
     t0 = time.time()
     ex = alfworld.devset[idx]
     pred = StructuredMemoryAgent()(**ex.inputs())
-    print(f"\n{Fore.CYAN}devset[{idx}]  success={int(bool(pred.success))}  "
-          f"steps={pred.steps}  ({time.time() - t0:.0f}s){Style.RESET_ALL}", flush=True)
+    print(
+        f"\n{Fore.CYAN}devset[{idx}]  success={int(bool(pred.success))}  "
+        f"steps={pred.steps}  ({time.time() - t0:.0f}s){Style.RESET_ALL}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

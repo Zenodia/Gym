@@ -1,5 +1,5 @@
 -e nemo-gym[dev] @ ../../
-../nemo_relay-0.4.0-cp311-abi3-linux_x86_64.whl
+nemo-relay>=0.4.0,<0.5.0
 dspy>=3.3.0b1
 haystack-ai>=2.30.0
 haystack-experimental>=0.19.0

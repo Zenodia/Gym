@@ -36,31 +36,50 @@ import time
 import uuid
 
 import dspy
-import nemo_relay
-from colorama import Fore, Style
-
 import haystack_memory as r2
-import ace_alfworld as r3
-
-from haystack_memory import (
-    GAMMA, SUMMARIZER_MODEL, REASONER_MODEL,
-    MAX_ITERS, TOP_K_MEMORY, INFO_ACTIONS,
-    _throttle, _reasoner, _doc_embedder, _text_embedder,
-    parse_goal, ground_fact, is_noop, make_action_tool,
-    REASON_SYS, MemoryState,
-    log_goal, log_step, log_obs, log_mem, log_recall, log_action, log_result,
-    _common_sense_hint,
-)
+import nemo_relay
 from ace_alfworld import (
-    Playbook, Reflect, curate,
-    _load_cache, _save_cache,
-    N_TRAIN, N_TEST, PLAYBOOK_CAP,
+    N_TEST,
+    N_TRAIN,
+    PLAYBOOK_CAP,
+    Playbook,
+    Reflect,
+    _load_cache,
+    _save_cache,
+    curate,
     reflection_lm,
 )
+from colorama import Fore, Style
+from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
 from haystack.dataclasses import ChatMessage, Document
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.document_stores.types import DuplicatePolicy
-from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
+from haystack_memory import (
+    GAMMA,
+    INFO_ACTIONS,
+    MAX_ITERS,
+    REASON_SYS,
+    REASONER_MODEL,
+    SUMMARIZER_MODEL,
+    TOP_K_MEMORY,
+    MemoryState,
+    _common_sense_hint,
+    _doc_embedder,
+    _reasoner,
+    _text_embedder,
+    _throttle,
+    ground_fact,
+    is_noop,
+    log_action,
+    log_goal,
+    log_mem,
+    log_obs,
+    log_recall,
+    log_result,
+    log_step,
+    make_action_tool,
+    parse_goal,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -102,7 +121,7 @@ def _atif_export(atif: nemo_relay.AtifExporter, label: str) -> None:
 # --------------------------------------------------------------------------- #
 # RPM retry constants                                                           #
 # --------------------------------------------------------------------------- #
-_RPM_WAIT_BASE = 15.0   # conservative floor under 40 RPM / 60 s window
+_RPM_WAIT_BASE = 15.0  # conservative floor under 40 RPM / 60 s window
 _RPM_MAX_RETRIES = 5
 _RPM_WAIT_CAP = 60.0
 
@@ -118,8 +137,7 @@ def _is_rpm_error(e: Exception) -> bool:
 # For retry loops, call llm.call / call_end directly per attempt instead.      #
 # --------------------------------------------------------------------------- #
 class _LLMSpan:
-    def __init__(self, provider: str, model: str, content: dict,
-                 ep_handle=None):
+    def __init__(self, provider: str, model: str, content: dict, ep_handle=None):
         self.provider = provider
         self.model = model
         self.request = nemo_relay.LLMRequest({}, content)
@@ -151,9 +169,16 @@ class _LLMSpan:
 # Drop-in for rung2._reason(). Uses llm.call/call_end per attempt so each      #
 # retry gets its own ATIF model step. Emits llm_rate_limit_hit on 429.         #
 # --------------------------------------------------------------------------- #
-def _reason_traced(goal: str, mem: MemoryState, facts: list, offered: list,
-                   playbook: str = "", common_sense: str = "",
-                   ep_handle=None, step_num: int = 0) -> str:
+def _reason_traced(
+    goal: str,
+    mem: MemoryState,
+    facts: list,
+    offered: list,
+    playbook: str = "",
+    common_sense: str = "",
+    ep_handle=None,
+    step_num: int = 0,
+) -> str:
     tool = make_action_tool(offered)
 
     user_parts = []
@@ -163,9 +188,7 @@ def _reason_traced(goal: str, mem: MemoryState, facts: list, offered: list,
         user_parts.append(common_sense)
     user_parts.append(f"Task: {goal}\nProgress: {mem.progress}\nPlan: {mem.plan}")
     if mem.dead_ends:
-        user_parts.append(
-            "Do NOT repeat these useless actions: " + ", ".join(mem.dead_ends[-8:])
-        )
+        user_parts.append("Do NOT repeat these useless actions: " + ", ".join(mem.dead_ends[-8:]))
     if facts:
         user_parts.append("Relevant facts:\n" + "\n".join(f"- {f}" for f in facts))
     user_parts.append("Admissible actions:\n" + "\n".join(f"  - {a}" for a in offered))
@@ -177,13 +200,17 @@ def _reason_traced(goal: str, mem: MemoryState, facts: list, offered: list,
     for attempt in range(_RPM_MAX_RETRIES):
         llm_req = nemo_relay.LLMRequest(
             {},
-            {"messages": [
-                {"role": "system", "content": REASON_SYS},
-                {"role": "user", "content": user_msg},
-            ], "model": REASONER_MODEL},
+            {
+                "messages": [
+                    {"role": "system", "content": REASON_SYS},
+                    {"role": "user", "content": user_msg},
+                ],
+                "model": REASONER_MODEL,
+            },
         )
         lh = nemo_relay.llm.call(
-            "reasoner", llm_req,
+            "reasoner",
+            llm_req,
             handle=ep_handle,
             model_name=REASONER_MODEL,
             data={"step": step_num, "attempt": attempt},
@@ -225,25 +252,30 @@ def _reason_traced(goal: str, mem: MemoryState, facts: list, offered: list,
             nemo_relay.llm.call_end(lh, {"error": str(e)[:300]})
 
             if _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
-                nemo_relay.scope.event("llm_rate_limit_hit", handle=ep_handle, data={
-                    "provider": "reasoner",
-                    "model": REASONER_MODEL,
-                    "step": step_num,
-                    "attempt": attempt + 1,
-                    "wait_seconds": wait,
-                    "error": str(e)[:300],
-                })
+                nemo_relay.scope.event(
+                    "llm_rate_limit_hit",
+                    handle=ep_handle,
+                    data={
+                        "provider": "reasoner",
+                        "model": REASONER_MODEL,
+                        "step": step_num,
+                        "attempt": attempt + 1,
+                        "wait_seconds": wait,
+                        "error": str(e)[:300],
+                    },
+                )
                 print(
                     f"  {Fore.YELLOW}[relay] 429/RPM on reasoner step {step_num}, "
                     f"waiting {wait:.0f}s (attempt {attempt + 1}/{_RPM_MAX_RETRIES})"
-                    f"{Style.RESET_ALL}", flush=True,
+                    f"{Style.RESET_ALL}",
+                    flush=True,
                 )
                 time.sleep(wait)
                 wait = min(wait * 2, _RPM_WAIT_CAP)
             else:
                 print(
-                    f"  {Fore.RED}[reason error (attempt {attempt + 1}/"
-                    f"{_RPM_MAX_RETRIES}): {e}]{Style.RESET_ALL}", flush=True,
+                    f"  {Fore.RED}[reason error (attempt {attempt + 1}/{_RPM_MAX_RETRIES}): {e}]{Style.RESET_ALL}",
+                    flush=True,
                 )
                 if not _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
                     time.sleep(15 * (attempt + 1))
@@ -253,11 +285,15 @@ def _reason_traced(goal: str, mem: MemoryState, facts: list, offered: list,
     explore_new = [a for a in not_taken if a.startswith(("go to", "open"))]
     explore_any = [a for a in offered if a.startswith(("go to", "open"))]
     fallback = (explore_new or explore_any or not_taken or offered)[0]
-    nemo_relay.scope.event("reasoner_fallback", handle=ep_handle, data={
-        "step": step_num,
-        "fallback_action": fallback,
-        "last_error": str(last_exc)[:300] if last_exc else None,
-    })
+    nemo_relay.scope.event(
+        "reasoner_fallback",
+        handle=ep_handle,
+        data={
+            "step": step_num,
+            "fallback_action": fallback,
+            "last_error": str(last_exc)[:300] if last_exc else None,
+        },
+    )
     return fallback
 
 
@@ -272,7 +308,7 @@ def _reason_traced(goal: str, mem: MemoryState, facts: list, offered: list,
 class TracedMemoryAgent(r2.StructuredMemoryAgent):
     def __init__(self, max_iters=MAX_ITERS):
         super().__init__(max_iters=max_iters)
-        self._ep_handle = None   # set by episode wrapper before calling forward()
+        self._ep_handle = None  # set by episode wrapper before calling forward()
 
     def forward(self, idx):
         ep_handle = self._ep_handle
@@ -285,12 +321,11 @@ class TracedMemoryAgent(r2.StructuredMemoryAgent):
         if self.prefill_facts:
             print(
                 f"  {Fore.CYAN}[prefill: loading {len(self.prefill_facts)} cached facts "
-                f"+ {len(self.prefill_dead_ends)} dead-ends]{Style.RESET_ALL}", flush=True,
+                f"+ {len(self.prefill_dead_ends)} dead-ends]{Style.RESET_ALL}",
+                flush=True,
             )
             _throttle()
-            docs = _doc_embedder().run(
-                documents=[Document(content=f) for f in self.prefill_facts]
-            )["documents"]
+            docs = _doc_embedder().run(documents=[Document(content=f) for f in self.prefill_facts])["documents"]
             store.write_documents(docs, policy=DuplicatePolicy.OVERWRITE)
             all_facts.extend(self.prefill_facts)
         for de in self.prefill_dead_ends:
@@ -305,12 +340,16 @@ class TracedMemoryAgent(r2.StructuredMemoryAgent):
 
             # [TRACE 1] emit goal at episode start
             if ep_handle:
-                nemo_relay.scope.event("episode_goal", handle=ep_handle, data={
-                    "goal": goal,
-                    "common_sense_hint": common_sense or None,
-                    "prefill_facts": len(all_facts),
-                    "prefill_dead_ends": len(mem.dead_ends),
-                })
+                nemo_relay.scope.event(
+                    "episode_goal",
+                    handle=ep_handle,
+                    data={
+                        "goal": goal,
+                        "common_sense_hint": common_sense or None,
+                        "prefill_facts": len(all_facts),
+                        "prefill_dead_ends": len(mem.dead_ends),
+                    },
+                )
 
             cur_obs = "(game start)"
 
@@ -321,17 +360,18 @@ class TracedMemoryAgent(r2.StructuredMemoryAgent):
 
                 # 1. DELTA-update — DSPy memory updater (single-shot, use _LLMSpan)
                 mem_content = {
-                    "messages": [{
-                        "role": "user",
-                        "content": (
-                            f"task={goal}\nlast_action={mem.last_action or 'none'}"
-                            f"\nobs={cur_obs}\nprogress={mem.progress}"
-                        ),
-                    }],
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": (
+                                f"task={goal}\nlast_action={mem.last_action or 'none'}"
+                                f"\nobs={cur_obs}\nprogress={mem.progress}"
+                            ),
+                        }
+                    ],
                     "model": SUMMARIZER_MODEL,
                 }
-                with _LLMSpan("memory-updater", SUMMARIZER_MODEL,
-                               mem_content, ep_handle) as span:
+                with _LLMSpan("memory-updater", SUMMARIZER_MODEL, mem_content, ep_handle) as span:
                     _throttle()
                     upd = self.update(
                         task=goal,
@@ -339,62 +379,55 @@ class TracedMemoryAgent(r2.StructuredMemoryAgent):
                         observation=cur_obs,
                         current_progress=mem.progress,
                     )
+
                     def _first_line(s):
                         return (s or "").strip().splitlines()[0].strip()
+
                     mem.progress = _first_line(upd.progress) or mem.progress
                     mem.plan = _first_line(upd.plan) or mem.plan
                     de = (upd.dead_end or "").strip()
                     if de and de == (mem.last_action or ""):
                         mem.add_dead_end(de)
-                    span.end(result={
-                        "new_fact": upd.new_fact,
-                        "dead_end": upd.dead_end,
-                        "progress": mem.progress,
-                        "plan": mem.plan,
-                    })
+                    span.end(
+                        result={
+                            "new_fact": upd.new_fact,
+                            "dead_end": upd.dead_end,
+                            "progress": mem.progress,
+                            "plan": mem.plan,
+                        }
+                    )
 
                 # 2. Store grounded world fact
                 raw_fact = (upd.new_fact or "").strip().splitlines()[0].strip()
                 fact = ground_fact(raw_fact, cur_obs)
                 if fact:
                     _throttle()
-                    docs = _doc_embedder().run(
-                        documents=[Document(content=fact)]
-                    )["documents"]
+                    docs = _doc_embedder().run(documents=[Document(content=fact)])["documents"]
                     store.write_documents(docs, policy=DuplicatePolicy.OVERWRITE)
                     if fact not in all_facts:
                         all_facts.append(fact)
-                log_mem(
-                    f"progress=[{mem.progress}]  plan=[{mem.plan}]  "
-                    f"dead_ends={mem.dead_ends[-5:]}"
-                )
+                log_mem(f"progress=[{mem.progress}]  plan=[{mem.plan}]  dead_ends={mem.dead_ends[-5:]}")
 
                 # 3. Recall COMPLEMENTARY facts
                 facts = []
                 if store.count_documents() > 0:
                     _throttle()
-                    q = _text_embedder().run(
-                        text=f"{goal}\n{mem.plan}\n{cur_obs}"
-                    )["embedding"]
-                    facts = [
-                        d.content for d in
-                        retriever.run(query_embedding=q, top_k=TOP_K_MEMORY)["documents"]
-                    ]
+                    q = _text_embedder().run(text=f"{goal}\n{mem.plan}\n{cur_obs}")["embedding"]
+                    facts = [d.content for d in retriever.run(query_embedding=q, top_k=TOP_K_MEMORY)["documents"]]
                 log_recall(facts)
 
                 # 4. Reason — traced with per-attempt llm.call/call_end + RPM retry
                 offered = [
-                    a for a in admissible
-                    if a not in mem.dead_ends
-                    and not (a.startswith(INFO_ACTIONS) and a in mem.taken)
+                    a
+                    for a in admissible
+                    if a not in mem.dead_ends and not (a.startswith(INFO_ACTIONS) and a in mem.taken)
                 ]
-                offered = (
-                    offered
-                    or [a for a in admissible if a not in mem.dead_ends]
-                    or admissible
-                )
+                offered = offered or [a for a in admissible if a not in mem.dead_ends] or admissible
                 action = _reason_traced(
-                    goal, mem, facts, offered,
+                    goal,
+                    mem,
+                    facts,
+                    offered,
                     playbook=self.playbook,
                     common_sense=common_sense,
                     ep_handle=ep_handle,
@@ -413,17 +446,21 @@ class TracedMemoryAgent(r2.StructuredMemoryAgent):
 
                 # [TRACE 1] per-step event: observation + reasoning context + action
                 if ep_handle:
-                    nemo_relay.scope.event("agent_step", handle=ep_handle, data={
-                        "step": steps + 1,
-                        "observation": cur_obs,
-                        "action_taken": action,
-                        "progress": mem.progress,
-                        "plan": mem.plan,
-                        "recalled_facts": facts,
-                        "dead_ends": mem.dead_ends[-8:],
-                        "result_obs": obs2[:400],
-                        "is_done": bool(done),
-                    })
+                    nemo_relay.scope.event(
+                        "agent_step",
+                        handle=ep_handle,
+                        data={
+                            "step": steps + 1,
+                            "observation": cur_obs,
+                            "action_taken": action,
+                            "progress": mem.progress,
+                            "plan": mem.plan,
+                            "recalled_facts": facts,
+                            "dead_ends": mem.dead_ends[-8:],
+                            "result_obs": obs2[:400],
+                            "is_done": bool(done),
+                        },
+                    )
 
                 cur_obs = obs2
                 steps += 1
@@ -451,8 +488,7 @@ class TracedMemoryAgent(r2.StructuredMemoryAgent):
 #   - reflection_summary event  [TRACE 2: state + steps + next best action]    #
 #   - playbook_updated event                                                    #
 # --------------------------------------------------------------------------- #
-def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
-                       reflect, label: str, cache: dict, cache_key: str):
+def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex, reflect, label: str, cache: dict, cache_key: str):
     cached = cache.get(cache_key, {})
     if cached:
         prev_goal = cached.get("goal", "")
@@ -460,14 +496,12 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
             print(
                 f"  {Fore.CYAN}[cache hit: resuming from previous run of "
                 f"'{prev_goal[:60]}' ({cached.get('steps', '?')} steps, "
-                f"success={cached.get('success', '?')})]{Style.RESET_ALL}", flush=True,
+                f"success={cached.get('success', '?')})]{Style.RESET_ALL}",
+                flush=True,
             )
         agent.prefill_facts = cached.get("facts", [])
         timeout_fallbacks = set(cached.get("timeout_fallbacks", []))
-        agent.prefill_dead_ends = [
-            de for de in cached.get("dead_ends", [])
-            if de not in timeout_fallbacks
-        ]
+        agent.prefill_dead_ends = [de for de in cached.get("dead_ends", []) if de not in timeout_fallbacks]
     else:
         agent.prefill_facts = []
         agent.prefill_dead_ends = []
@@ -475,40 +509,46 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
     # ATIF: register before scope opens so scope open event is captured
     atif = _atif_register(label)
 
-    with nemo_relay.scope.scope(
-        f"episode-{label}", nemo_relay.ScopeType.Agent
-    ) as ep_handle:
-
-        nemo_relay.scope.event("cache_lookup", handle=ep_handle, data={
-            "cache_key": cache_key,
-            "hit": bool(cached),
-            "prefill_facts_count": len(agent.prefill_facts),
-            "prefill_dead_ends_count": len(agent.prefill_dead_ends),
-        })
+    with nemo_relay.scope.scope(f"episode-{label}", nemo_relay.ScopeType.Agent) as ep_handle:
+        nemo_relay.scope.event(
+            "cache_lookup",
+            handle=ep_handle,
+            data={
+                "cache_key": cache_key,
+                "hit": bool(cached),
+                "prefill_facts_count": len(agent.prefill_facts),
+                "prefill_dead_ends_count": len(agent.prefill_dead_ends),
+            },
+        )
 
         agent.playbook = pb.render()
-        nemo_relay.scope.event("playbook_injected", handle=ep_handle, data={
-            "bullet_count": len(pb.items),
-            "playbook": pb.render(k=PLAYBOOK_CAP),
-        })
+        nemo_relay.scope.event(
+            "playbook_injected",
+            handle=ep_handle,
+            data={
+                "bullet_count": len(pb.items),
+                "playbook": pb.render(k=PLAYBOOK_CAP),
+            },
+        )
 
         agent._ep_handle = ep_handle
         pred = agent(**ex.inputs())
         agent._ep_handle = None
 
-        outcome = (
-            f"SOLVED in {pred.steps} steps" if pred.success
-            else f"FAILED at {pred.steps} steps"
-        )
+        outcome = f"SOLVED in {pred.steps} steps" if pred.success else f"FAILED at {pred.steps} steps"
 
-        nemo_relay.scope.event("episode_outcome", handle=ep_handle, data={
-            "label": label,
-            "goal": pred.goal,
-            "outcome": outcome,
-            "steps": pred.steps,
-            "success": bool(pred.success),
-            "trajectory_tail": pred.trajectory[-2000:],
-        })
+        nemo_relay.scope.event(
+            "episode_outcome",
+            handle=ep_handle,
+            data={
+                "label": label,
+                "goal": pred.goal,
+                "outcome": outcome,
+                "steps": pred.steps,
+                "success": bool(pred.success),
+                "trajectory_tail": pred.trajectory[-2000:],
+            },
+        )
 
         # Persist cache
         cache[cache_key] = {
@@ -524,14 +564,16 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
         # --- Reflector: llm.call/call_end per attempt + 429/RPM retry --------
         _throttle()
         ref_content_template = {
-            "messages": [{
-                "role": "user",
-                "content": (
-                    f"task={pred.goal}\noutcome={outcome}"
-                    f"\ntrajectory={pred.trajectory[-3000:]}"
-                    f"\nplaybook={pb.render_meta() or '(empty)'}"
-                ),
-            }],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        f"task={pred.goal}\noutcome={outcome}"
+                        f"\ntrajectory={pred.trajectory[-3000:]}"
+                        f"\nplaybook={pb.render_meta() or '(empty)'}"
+                    ),
+                }
+            ],
             "model": SUMMARIZER_MODEL,
         }
 
@@ -541,7 +583,8 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
         for attempt in range(_RPM_MAX_RETRIES):
             ref_req = nemo_relay.LLMRequest({}, ref_content_template)
             ref_lh = nemo_relay.llm.call(
-                "reflector", ref_req,
+                "reflector",
+                ref_req,
                 handle=ep_handle,
                 model_name=SUMMARIZER_MODEL,
                 data={"attempt": attempt},
@@ -554,28 +597,36 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
                         trajectory=pred.trajectory[-3000:],
                         current_playbook=pb.render_meta() or "(empty)",
                     )
-                nemo_relay.llm.call_end(ref_lh, {
-                    "helpful_ids": refl.helpful_ids,
-                    "harmful_ids": refl.harmful_ids,
-                    "new_strategies": refl.new_strategies,
-                })
+                nemo_relay.llm.call_end(
+                    ref_lh,
+                    {
+                        "helpful_ids": refl.helpful_ids,
+                        "harmful_ids": refl.harmful_ids,
+                        "new_strategies": refl.new_strategies,
+                    },
+                )
                 break  # success
 
             except Exception as e:
                 nemo_relay.llm.call_end(ref_lh, {"error": str(e)[:300]})
                 if _is_rpm_error(e) and attempt < _RPM_MAX_RETRIES - 1:
                     # [TRACE 3] RPM hit on reflector
-                    nemo_relay.scope.event("llm_rate_limit_hit", handle=ep_handle, data={
-                        "provider": "reflector",
-                        "model": SUMMARIZER_MODEL,
-                        "attempt": attempt + 1,
-                        "wait_seconds": wait,
-                        "error": str(e)[:300],
-                    })
+                    nemo_relay.scope.event(
+                        "llm_rate_limit_hit",
+                        handle=ep_handle,
+                        data={
+                            "provider": "reflector",
+                            "model": SUMMARIZER_MODEL,
+                            "attempt": attempt + 1,
+                            "wait_seconds": wait,
+                            "error": str(e)[:300],
+                        },
+                    )
                     print(
                         f"  {Fore.YELLOW}[relay] 429/RPM on reflector, "
                         f"waiting {wait:.0f}s (attempt {attempt + 1}/"
-                        f"{_RPM_MAX_RETRIES}){Style.RESET_ALL}", flush=True,
+                        f"{_RPM_MAX_RETRIES}){Style.RESET_ALL}",
+                        flush=True,
                     )
                     time.sleep(wait)
                     wait = min(wait * 2, _RPM_WAIT_CAP)
@@ -589,32 +640,40 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
 
         # [TRACE 2] reflection_summary: game state + steps taken + next best action
         pb_size_before = len(pb.items)
-        obs_lines = [l for l in pred.trajectory.splitlines() if not l.startswith(">")]
+        obs_lines = [line for line in pred.trajectory.splitlines() if not line.startswith(">")]
         last_obs = obs_lines[-1][:200] if obs_lines else ""
 
-        nemo_relay.scope.event("reflection_summary", handle=ep_handle, data={
-            "goal": pred.goal,
-            "outcome": outcome,
-            "steps_taken": pred.steps,
-            "last_observation": last_obs,
-            "helpful_strategy_ids": refl.helpful_ids,
-            "harmful_strategy_ids": refl.harmful_ids,
-            "next_best_strategies": refl.new_strategies,
-            "playbook_size_before": pb_size_before,
-            "current_playbook": pb.render_meta(),
-        })
+        nemo_relay.scope.event(
+            "reflection_summary",
+            handle=ep_handle,
+            data={
+                "goal": pred.goal,
+                "outcome": outcome,
+                "steps_taken": pred.steps,
+                "last_observation": last_obs,
+                "helpful_strategy_ids": refl.helpful_ids,
+                "harmful_strategy_ids": refl.harmful_ids,
+                "next_best_strategies": refl.new_strategies,
+                "playbook_size_before": pb_size_before,
+                "current_playbook": pb.render_meta(),
+            },
+        )
 
         curate(pb, refl)
 
-        nemo_relay.scope.event("playbook_updated", handle=ep_handle, data={
-            "playbook_size_after": len(pb.items),
-            "bullets_delta": len(pb.items) - pb_size_before,
-            "playbook_snapshot": pb.render_meta(),
-        })
+        nemo_relay.scope.event(
+            "playbook_updated",
+            handle=ep_handle,
+            data={
+                "playbook_size_after": len(pb.items),
+                "bullets_delta": len(pb.items) - pb_size_before,
+                "playbook_snapshot": pb.render_meta(),
+            },
+        )
 
         print(
-            f"{Fore.BLUE}{Style.BRIGHT}[{label}] {outcome}; playbook now "
-            f"{len(pb.items)} bullets{Style.RESET_ALL}", flush=True,
+            f"{Fore.BLUE}{Style.BRIGHT}[{label}] {outcome}; playbook now {len(pb.items)} bullets{Style.RESET_ALL}",
+            flush=True,
         )
         print(f"{Fore.BLUE}{pb.render_meta()}{Style.RESET_ALL}", flush=True)
 
@@ -628,6 +687,7 @@ def run_episode_traced(agent: TracedMemoryAgent, pb: Playbook, ex,
 # --------------------------------------------------------------------------- #
 def main():
     from dspy.datasets.alfworld import AlfWorld
+
     r2.alfworld = AlfWorld(max_threads=r2.NUM_THREADS)
 
     reflect = dspy.Predict(Reflect)
@@ -641,49 +701,67 @@ def main():
 
     # --- training phase -------------------------------------------------------
     print(
-        f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG3-RELAY ACE: train {n_train} episodes "
-        f"====={Style.RESET_ALL}", flush=True,
+        f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG3-RELAY ACE: train {n_train} episodes ====={Style.RESET_ALL}",
+        flush=True,
     )
     t0 = time.time()
 
     with nemo_relay.scope.scope("ace-train", nemo_relay.ScopeType.Agent) as train_handle:
-        nemo_relay.scope.event("phase_start", handle=train_handle, data={
-            "phase": "train",
-            "n_episodes": n_train,
-            "reasoner_model": REASONER_MODEL,
-            "summarizer_model": SUMMARIZER_MODEL,
-        })
+        nemo_relay.scope.event(
+            "phase_start",
+            handle=train_handle,
+            data={
+                "phase": "train",
+                "n_episodes": n_train,
+                "reasoner_model": REASONER_MODEL,
+                "summarizer_model": SUMMARIZER_MODEL,
+            },
+        )
         for i in range(n_train):
             print(
-                f"\n{Fore.CYAN}{Style.BRIGHT}--- train episode {i + 1}/{n_train} "
-                f"(trainset[{i}]) ---{Style.RESET_ALL}", flush=True,
+                f"\n{Fore.CYAN}{Style.BRIGHT}--- train episode {i + 1}/{n_train} (trainset[{i}]) ---{Style.RESET_ALL}",
+                flush=True,
             )
             run_episode_traced(
-                agent, pb, r2.alfworld.trainset[i], reflect,
-                f"train{i + 1}", cache, f"train_{i}",
+                agent,
+                pb,
+                r2.alfworld.trainset[i],
+                reflect,
+                f"train{i + 1}",
+                cache,
+                f"train_{i}",
             )
-        nemo_relay.scope.event("phase_end", handle=train_handle, data={
-            "phase": "train",
-            "playbook_size": len(pb.items),
-            "playbook": pb.render_meta(),
-        })
+        nemo_relay.scope.event(
+            "phase_end",
+            handle=train_handle,
+            data={
+                "phase": "train",
+                "playbook_size": len(pb.items),
+                "playbook": pb.render_meta(),
+            },
+        )
 
     # --- eval phase -----------------------------------------------------------
     print(
         f"\n{Fore.CYAN}{Style.BRIGHT}===== RUNG3-RELAY ACE: eval {n_test} task(s) with "
-        f"learned playbook ====={Style.RESET_ALL}", flush=True,
+        f"learned playbook ====={Style.RESET_ALL}",
+        flush=True,
     )
     agent.playbook = pb.render()
     succ, steps_solved, rets, records = [], [], [], []
     test_idxs = [2] if smoke else list(range(n_test))
 
     with nemo_relay.scope.scope("ace-eval", nemo_relay.ScopeType.Agent) as eval_handle:
-        nemo_relay.scope.event("phase_start", handle=eval_handle, data={
-            "phase": "eval",
-            "n_episodes": len(test_idxs),
-            "frozen_playbook_size": len(pb.items),
-            "frozen_playbook": pb.render_meta(),
-        })
+        nemo_relay.scope.event(
+            "phase_start",
+            handle=eval_handle,
+            data={
+                "phase": "eval",
+                "n_episodes": len(test_idxs),
+                "frozen_playbook_size": len(pb.items),
+                "frozen_playbook": pb.render_meta(),
+            },
+        )
 
         for i in test_idxs:
             print(
@@ -695,44 +773,48 @@ def main():
             cached = cache.get(cache_key, {})
             agent.prefill_facts = cached.get("facts", [])
             timeout_fallbacks = set(cached.get("timeout_fallbacks", []))
-            agent.prefill_dead_ends = [
-                de for de in cached.get("dead_ends", [])
-                if de not in timeout_fallbacks
-            ]
+            agent.prefill_dead_ends = [de for de in cached.get("dead_ends", []) if de not in timeout_fallbacks]
 
             # ATIF: register before scope opens
             atif = _atif_register(ep_label)
 
-            with nemo_relay.scope.scope(
-                f"episode-{ep_label}", nemo_relay.ScopeType.Agent
-            ) as ep_handle:
-                nemo_relay.scope.event("cache_lookup", handle=ep_handle, data={
-                    "cache_key": cache_key,
-                    "hit": bool(cached),
-                    "prefill_facts_count": len(agent.prefill_facts),
-                    "prefill_dead_ends_count": len(agent.prefill_dead_ends),
-                })
-                nemo_relay.scope.event("playbook_injected", handle=ep_handle, data={
-                    "bullet_count": len(pb.items),
-                    "playbook": pb.render(k=PLAYBOOK_CAP),
-                })
+            with nemo_relay.scope.scope(f"episode-{ep_label}", nemo_relay.ScopeType.Agent) as ep_handle:
+                nemo_relay.scope.event(
+                    "cache_lookup",
+                    handle=ep_handle,
+                    data={
+                        "cache_key": cache_key,
+                        "hit": bool(cached),
+                        "prefill_facts_count": len(agent.prefill_facts),
+                        "prefill_dead_ends_count": len(agent.prefill_dead_ends),
+                    },
+                )
+                nemo_relay.scope.event(
+                    "playbook_injected",
+                    handle=ep_handle,
+                    data={
+                        "bullet_count": len(pb.items),
+                        "playbook": pb.render(k=PLAYBOOK_CAP),
+                    },
+                )
 
                 agent._ep_handle = ep_handle
                 pred = agent(**r2.alfworld.devset[i].inputs())
                 agent._ep_handle = None
 
-                outcome = (
-                    f"SOLVED in {pred.steps} steps" if pred.success
-                    else f"FAILED at {pred.steps} steps"
+                outcome = f"SOLVED in {pred.steps} steps" if pred.success else f"FAILED at {pred.steps} steps"
+                nemo_relay.scope.event(
+                    "episode_outcome",
+                    handle=ep_handle,
+                    data={
+                        "label": ep_label,
+                        "goal": pred.goal,
+                        "outcome": outcome,
+                        "steps": pred.steps,
+                        "success": bool(pred.success),
+                        "trajectory_tail": pred.trajectory[-2000:],
+                    },
                 )
-                nemo_relay.scope.event("episode_outcome", handle=ep_handle, data={
-                    "label": ep_label,
-                    "goal": pred.goal,
-                    "outcome": outcome,
-                    "steps": pred.steps,
-                    "success": bool(pred.success),
-                    "trajectory_tail": pred.trajectory[-2000:],
-                })
 
             # Scope closed — export ATIF
             _atif_export(atif, ep_label)
@@ -752,53 +834,59 @@ def main():
             succ.append(1.0 if pred.success else 0.0)
             if pred.success:
                 steps_solved.append(pred.steps)
-            records.append({
-                "devset": i,
-                "goal": pred.goal,
-                "success": int(bool(pred.success)),
-                "steps": pred.steps,
-                "return": round(ret, 4),
-            })
+            records.append(
+                {
+                    "devset": i,
+                    "goal": pred.goal,
+                    "success": int(bool(pred.success)),
+                    "steps": pred.steps,
+                    "return": round(ret, 4),
+                }
+            )
 
         avg_ret = sum(rets) / len(rets)
         succ_pct = 100.0 * sum(succ) / len(succ)
-        avg_steps = (
-            sum(steps_solved) / len(steps_solved)
-        ) if steps_solved else float("nan")
+        avg_steps = (sum(steps_solved) / len(steps_solved)) if steps_solved else float("nan")
 
         # [TRACE 2] final eval summary
-        nemo_relay.scope.event("eval_complete", handle=eval_handle, data={
-            "success_pct": succ_pct,
-            "avg_return": avg_ret,
-            "avg_steps": avg_steps,
-            "n_test": len(test_idxs),
-            "playbook_final_size": len(pb.items),
-            "playbook_final": pb.render_meta(),
-        })
+        nemo_relay.scope.event(
+            "eval_complete",
+            handle=eval_handle,
+            data={
+                "success_pct": succ_pct,
+                "avg_return": avg_ret,
+                "avg_steps": avg_steps,
+                "n_test": len(test_idxs),
+                "playbook_final_size": len(pb.items),
+                "playbook_final": pb.render_meta(),
+            },
+        )
 
     with open("results_rung3_relay.json", "w") as f:
-        json.dump({
-            "label": "rung3-ace-relay",
-            "gamma": GAMMA,
-            "playbook": pb.render_meta(),
-            "summary": {
-                "return": avg_ret,
-                "success": succ_pct,
-                "avg_steps": avg_steps,
+        json.dump(
+            {
+                "label": "rung3-ace-relay",
+                "gamma": GAMMA,
+                "playbook": pb.render_meta(),
+                "summary": {
+                    "return": avg_ret,
+                    "success": succ_pct,
+                    "avg_steps": avg_steps,
+                },
+                "games": records,
             },
-            "games": records,
-        }, f, indent=2)
+            f,
+            indent=2,
+        )
 
-    print(
-        f"\n{'=' * 60}\n  RUNG3 ACE (relay-traced)  "
-        f"(playbook = {len(pb.items)} bullets)\n{'=' * 60}"
-    )
+    print(f"\n{'=' * 60}\n  RUNG3 ACE (relay-traced)  (playbook = {len(pb.items)} bullets)\n{'=' * 60}")
     print(f"  {'':<10}{'return':>10}{'success%':>11}{'avg_steps':>11}")
     print(f"  {'baseline':<10}{0.485:>10.3f}{60.0:>10.1f}%{12.2:>11.1f}   (from log)")
     print(f"  {'rung3':<10}{avg_ret:>10.3f}{succ_pct:>10.1f}%{avg_steps:>11.1f}")
     print(
         f"{'=' * 60}  ({time.time() - t0:.0f}s)  -> results_rung3_relay.json\n"
-        f"  traces/atif/   traces/atof/events.jsonl", flush=True,
+        f"  traces/atif/   traces/atof/events.jsonl",
+        flush=True,
     )
 
     _atof.force_flush()
